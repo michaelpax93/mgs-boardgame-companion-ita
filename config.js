@@ -39,8 +39,8 @@ const CONFIG = {
             description: "Infiltrazione a Shadow Moses Island",
             // VIDEO: Inserisci gli ID dei video YouTube in italiano
             // Cerca su YouTube: "Metal Gear Solid ITA cargo dock cutscene"
-            intro: { id: "", start: 0, end: 0 },  // Video intro prima della missione
-            outro: { id: "", start: 0, end: 0 },   // Video outro dopo la missione
+            intro: { id: "QgCK_NE4EXU", start: 1570, end: 1687 },  // Video intro prima della missione
+            outro: { id: "QgCK_NE4EXU", start: 1688, end: 1735 },   // Video outro dopo la missione
         },
         {
             id: 2,
@@ -48,8 +48,8 @@ const CONFIG = {
             type: "SNEAKING MISSION",
             isBoss: false,
             description: "Attraversamento dell'eliporto",
-            intro: { id: "", start: 0, end: 0 },
-            outro: { id: "", start: 0, end: 0 },
+            intro: { id: "QgCK_NE4EXU", start: 0, end: 0 },
+            outro: { id: "QgCK_NE4EXU", start: 0, end: 0 },
         },
         {
             id: 3,
@@ -57,8 +57,8 @@ const CONFIG = {
             type: "SNEAKING MISSION",
             isBoss: false,
             description: "Salvataggio del presidente della DARPA",
-            intro: { id: "", start: 0, end: 0 },
-            outro: { id: "", start: 0, end: 0 },
+            intro: { id: "QgCK_NE4EXU", start: 0, end: 0 },
+            outro: { id: "QgCK_NE4EXU", start: 0, end: 0 },
         },
         {
             id: 4,
@@ -66,8 +66,8 @@ const CONFIG = {
             type: "BOSS BATTLE",
             isBoss: true,
             description: "Scontro con Revolver Ocelot",
-            intro: { id: "", start: 0, end: 0 },
-            outro: { id: "", start: 0, end: 0 },
+            intro: { id: "QgCK_NE4EXU", start: 0, end: 0 },
+            outro: { id: "QgCK_NE4EXU", start: 0, end: 0 },
         },
         {
             id: 5,
@@ -75,8 +75,8 @@ const CONFIG = {
             type: "BOSS BATTLE",
             isBoss: true,
             description: "Imboscata del carro armato M1",
-            intro: { id: "", start: 0, end: 0 },
-            outro: { id: "", start: 0, end: 0 },
+            intro: { id: "QgCK_NE4EXU", start: 0, end: 0 },
+            outro: { id: "QgCK_NE4EXU", start: 0, end: 0 },
         },
         {
             id: 6,
@@ -84,8 +84,8 @@ const CONFIG = {
             type: "SNEAKING MISSION",
             isBoss: false,
             description: "Infiltrazione nel deposito testate nucleari",
-            intro: { id: "", start: 0, end: 0 },
-            outro: { id: "", start: 0, end: 0 },
+            intro: { id: "QgCK_NE4EXU", start: 0, end: 0 },
+            outro: { id: "QgCK_NE4EXU", start: 0, end: 0 },
         },
         {
             id: 7,
@@ -93,8 +93,8 @@ const CONFIG = {
             type: "BOSS BATTLE",
             isBoss: true,
             description: "Scontro con il Cyborg Ninja",
-            intro: { id: "", start: 0, end: 0 },
-            outro: { id: "", start: 0, end: 0 },
+            intro: { id: "QgCK_NE4EXU", start: 0, end: 0 },
+            outro: { id: "QgCK_NE4EXU", start: 0, end: 0 },
         },
         {
             id: 8,
@@ -102,8 +102,8 @@ const CONFIG = {
             type: "BOSS BATTLE",
             isBoss: true,
             description: "Scontro con Psycho Mantis",
-            intro: { id: "", start: 0, end: 0 },
-            outro: { id: "", start: 0, end: 0 },
+            intro: { id: "QgCK_NE4EXU", start: 0, end: 0 },
+            outro: { id: "QgCK_NE4EXU", start: 0, end: 0 },
         },
         {
             id: 9,
@@ -111,8 +111,8 @@ const CONFIG = {
             type: "SNEAKING MISSION",
             isBoss: false,
             description: "Fuga dalla cella di prigionia",
-            intro: { id: "", start: 0, end: 0 },
-            outro: { id: "", start: 0, end: 0 },
+            intro: { id: "QgCK_NE4EXU", start: 0, end: 0 },
+            outro: { id: "QgCK_NE4EXU", start: 0, end: 0 },
         },
         {
             id: 10,
@@ -120,8 +120,8 @@ const CONFIG = {
             type: "BOSS BATTLE",
             isBoss: true,
             description: "Scontro con l'Hind D di Liquid",
-            intro: { id: "", start: 0, end: 0 },
-            outro: { id: "", start: 0, end: 0 },
+            intro: { id: "QgCK_NE4EXU", start: 0, end: 0 },
+            outro: { id: "QgCK_NE4EXU", start: 0, end: 0 },
         },
         {
             id: 11,
@@ -129,8 +129,8 @@ const CONFIG = {
             type: "BOSS BATTLE",
             isBoss: true,
             description: "Duello con Sniper Wolf",
-            intro: { id: "", start: 0, end: 0 },
-            outro: { id: "", start: 0, end: 0 },
+            intro: { id: "QgCK_NE4EXU", start: 0, end: 0 },
+            outro: { id: "QgCK_NE4EXU", start: 0, end: 0 },
         },
         {
             id: 12,
@@ -138,8 +138,8 @@ const CONFIG = {
             type: "BOSS BATTLE",
             isBoss: true,
             description: "Scontro con Vulcan Raven",
-            intro: { id: "", start: 0, end: 0 },
-            outro: { id: "", start: 0, end: 0 },
+            intro: { id: "QgCK_NE4EXU", start: 0, end: 0 },
+            outro: { id: "QgCK_NE4EXU", start: 0, end: 0 },
         },
         {
             id: 13,
@@ -147,8 +147,8 @@ const CONFIG = {
             type: "SNEAKING MISSION",
             isBoss: false,
             description: "Sovrascrittura del codice PAL",
-            intro: { id: "", start: 0, end: 0 },
-            outro: { id: "", start: 0, end: 0 },
+            intro: { id: "QgCK_NE4EXU", start: 0, end: 0 },
+            outro: { id: "QgCK_NE4EXU", start: 0, end: 0 },
         },
         {
             id: 14,
@@ -156,8 +156,8 @@ const CONFIG = {
             type: "BOSS BATTLE",
             isBoss: true,
             description: "Battaglia finale contro Metal Gear REX",
-            intro: { id: "", start: 0, end: 0 },
-            outro: { id: "", start: 0, end: 0 },
+            intro: { id: "QgCK_NE4EXU", start: 0, end: 0 },
+            outro: { id: "QgCK_NE4EXU", start: 0, end: 0 },
         },
     ],
 
