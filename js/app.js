@@ -1,12 +1,11 @@
 /**
  * MGS BOARD GAME COMPANION - APP
+ * Versione con video locali (.mp4)
  */
 
 const App = {
     currentScreen: 'boot-screen',
     currentStage: null,
-    ytPlayer: null,
-    ytReady: false,
     musicAudio: null,
     ambientAudio: null,
     currentMusicBtn: null,
@@ -16,13 +15,9 @@ const App = {
     // SCREEN MANAGEMENT
     // ============================================
     showScreen(screenId) {
-        // Fade out current
         const current = document.querySelector('.screen.active');
-        if (current) {
-            current.classList.remove('active');
-        }
+        if (current) current.classList.remove('active');
 
-        // Small delay for transition feel
         setTimeout(() => {
             const next = document.getElementById(screenId);
             if (next) {
@@ -41,8 +36,8 @@ const App = {
         if (!grid) return;
 
         grid.innerHTML = CONFIG.stages.map(stage => {
-            const hasIntro = stage.intro && stage.intro.id;
-            const hasOutro = stage.outro && stage.outro.id;
+            const hasIntro = stage.intro && stage.intro.length > 0;
+            const hasOutro = stage.outro && stage.outro.length > 0;
             const hasIndicators = hasIntro || hasOutro;
 
             return `
@@ -83,117 +78,65 @@ const App = {
         const btnIntro = document.getElementById('btn-intro');
         const btnOutro = document.getElementById('btn-outro');
         if (btnIntro) {
-            btnIntro.disabled = !stage.intro || !stage.intro.id;
-            btnIntro.style.opacity = stage.intro && stage.intro.id ? '1' : '0.3';
+            const hasIntro = stage.intro && stage.intro.length > 0;
+            btnIntro.disabled = !hasIntro;
+            btnIntro.style.opacity = hasIntro ? '1' : '0.3';
         }
         if (btnOutro) {
-            btnOutro.disabled = !stage.outro || !stage.outro.id;
-            btnOutro.style.opacity = stage.outro && stage.outro.id ? '1' : '0.3';
+            const hasOutro = stage.outro && stage.outro.length > 0;
+            btnOutro.disabled = !hasOutro;
+            btnOutro.style.opacity = hasOutro ? '1' : '0.3';
         }
 
         // Reset video
         this.stopVideo();
 
-        // Show screen
         this.showScreen('stage-active');
     },
 
     // ============================================
-    // YOUTUBE PLAYER
+    // VIDEO PLAYER (locale)
     // ============================================
-    initYouTube() {
-        // Load YouTube IFrame API
-        const tag = document.createElement('script');
-        tag.src = 'https://www.youtube.com/iframe_api';
-        const firstScript = document.getElementsByTagName('script')[0];
-        firstScript.parentNode.insertBefore(tag, firstScript);
-    },
+    playVideo(src) {
+        if (!src || src.length === 0) return;
 
-    onYouTubeReady() {
-        this.ytReady = true;
-    },
-
-    createPlayer(videoId, startSeconds, endSeconds) {
+        const player = document.getElementById('video-player');
         const placeholder = document.getElementById('video-placeholder');
+        const stopBtn = document.getElementById('btn-stop-video');
+
         if (placeholder) placeholder.style.display = 'none';
-
-        // Destroy existing player
-        if (this.ytPlayer) {
-            try { this.ytPlayer.destroy(); } catch(e) {}
-            this.ytPlayer = null;
+        if (player) {
+            player.src = src;
+            player.style.display = 'block';
+            player.play().catch(e => {
+                console.warn('Impossibile riprodurre video:', e.message);
+            });
         }
-
-        // Recreate the div
-        const wrapper = document.getElementById('video-wrapper');
-        let playerDiv = document.getElementById('youtube-player');
-        if (!playerDiv) {
-            playerDiv = document.createElement('div');
-            playerDiv.id = 'youtube-player';
-            wrapper.appendChild(playerDiv);
-        }
-
-        const playerVars = {
-            autoplay: 1,
-            controls: 1,
-            modestbranding: 1,
-            rel: 0,
-            hl: 'it',
-        };
-
-        if (startSeconds > 0) playerVars.start = startSeconds;
-        if (endSeconds > 0) playerVars.end = endSeconds;
-
-        this.ytPlayer = new YT.Player('youtube-player', {
-            videoId: videoId,
-            playerVars: playerVars,
-            events: {
-                onReady: (e) => e.target.playVideo(),
-                onStateChange: (e) => {
-                    const stopBtn = document.getElementById('btn-stop-video');
-                    if (e.data === YT.PlayerState.PLAYING) {
-                        if (stopBtn) stopBtn.style.display = '';
-                    } else if (e.data === YT.PlayerState.ENDED || e.data === YT.PlayerState.PAUSED) {
-                        // Keep stop visible as long as player exists
-                    }
-                }
-            }
-        });
+        if (stopBtn) stopBtn.style.display = '';
     },
 
     playIntro() {
-        if (!this.currentStage || !this.currentStage.intro || !this.currentStage.intro.id) return;
-        const v = this.currentStage.intro;
-        this.createPlayer(v.id, v.start || 0, v.end || 0);
+        if (!this.currentStage) return;
+        this.playVideo(this.currentStage.intro);
     },
 
     playOutro() {
-        if (!this.currentStage || !this.currentStage.outro || !this.currentStage.outro.id) return;
-        const v = this.currentStage.outro;
-        this.createPlayer(v.id, v.start || 0, v.end || 0);
+        if (!this.currentStage) return;
+        this.playVideo(this.currentStage.outro);
     },
 
     stopVideo() {
-        if (this.ytPlayer) {
-            try { this.ytPlayer.destroy(); } catch(e) {}
-            this.ytPlayer = null;
-        }
-        // Recreate placeholder
-        const wrapper = document.getElementById('video-wrapper');
-        if (wrapper) {
-            // Remove old player div
-            const oldPlayer = document.getElementById('youtube-player');
-            if (oldPlayer) oldPlayer.remove();
-
-            // Show placeholder
-            const placeholder = document.getElementById('video-placeholder');
-            if (placeholder) placeholder.style.display = '';
-
-            // Recreate player div for next use
-            const newPlayer = document.createElement('div');
-            newPlayer.id = 'youtube-player';
-            wrapper.appendChild(newPlayer);
-        }
+        const player = document.getElementById('video-player');
+        const placeholder = document.getElementById('video-placeholder');
         const stopBtn = document.getElementById('btn-stop-video');
+
+        if (player) {
+            player.pause();
+            player.removeAttribute('src');
+            player.load();
+            player.style.display = 'none';
+        }
+        if (placeholder) placeholder.style.display = '';
         if (stopBtn) stopBtn.style.display = 'none';
     },
 
@@ -211,7 +154,7 @@ const App = {
         if (!container) return;
 
         if (CONFIG.sfx.length === 0) {
-            container.innerHTML = '<div class="no-audio-msg">Nessun effetto sonoro configurato. Aggiungi file .mp3 in audio/sfx/</div>';
+            container.innerHTML = '<div class="no-audio-msg">Nessun effetto sonoro configurato.</div>';
             return;
         }
 
@@ -241,7 +184,7 @@ const App = {
         if (!container) return;
 
         if (CONFIG.music.length === 0) {
-            container.innerHTML = '<div class="no-audio-msg">Nessuna musica configurata. Aggiungi file .mp3 in audio/music/</div>';
+            container.innerHTML = '<div class="no-audio-msg">Nessuna musica configurata.</div>';
             return;
         }
 
@@ -256,7 +199,6 @@ const App = {
         const track = CONFIG.music[index];
         if (!track) return;
 
-        // Stop current music
         this.stopMusic();
 
         this.musicAudio = new Audio(track.file);
@@ -264,11 +206,9 @@ const App = {
         this.musicAudio.volume = (document.getElementById('music-volume')?.value || 50) / 100;
 
         this.musicAudio.play().then(() => {
-            // Show controls
             const controls = document.getElementById('music-controls');
             if (controls) controls.style.display = '';
 
-            // Highlight button
             this.currentMusicBtn = document.getElementById(`music-btn-${index}`);
             if (this.currentMusicBtn) this.currentMusicBtn.classList.add('playing');
         }).catch(e => {
@@ -277,9 +217,7 @@ const App = {
     },
 
     setMusicVolume(val) {
-        if (this.musicAudio) {
-            this.musicAudio.volume = val / 100;
-        }
+        if (this.musicAudio) this.musicAudio.volume = val / 100;
     },
 
     stopMusic() {
@@ -304,7 +242,7 @@ const App = {
         if (!container) return;
 
         if (CONFIG.ambient.length === 0) {
-            container.innerHTML = '<div class="no-audio-msg">Nessun suono ambientale configurato. Aggiungi file .mp3 in audio/ambient/</div>';
+            container.innerHTML = '<div class="no-audio-msg">Nessun suono ambientale configurato.</div>';
             return;
         }
 
@@ -337,9 +275,7 @@ const App = {
     },
 
     setAmbientVolume(val) {
-        if (this.ambientAudio) {
-            this.ambientAudio.volume = val / 100;
-        }
+        if (this.ambientAudio) this.ambientAudio.volume = val / 100;
     },
 
     stopAmbient() {
@@ -371,9 +307,7 @@ const App = {
     init() {
         this.initStageGrid();
         this.initSoundButtons();
-        this.initYouTube();
 
-        // Keyboard: Enter on stage cards
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 if (this.currentScreen === 'stage-active') {
@@ -385,12 +319,6 @@ const App = {
     }
 };
 
-// YouTube API callback
-function onYouTubeIframeAPIReady() {
-    App.onYouTubeReady();
-}
-
-// Boot
 document.addEventListener('DOMContentLoaded', () => {
     App.init();
 });
