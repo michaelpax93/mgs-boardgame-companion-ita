@@ -23,7 +23,7 @@ const CONFIG = {
     // ============================================
     music: {
         "encounter":    { name: "Encounter",                file: "audio/music/encounter.mp3" },
-        "cavern":       { name: "Cavern",                   file: "audio/music/Cavern.mp3" },
+        "cavern":       { name: "Cavern",                   file: "audio/music/Cavern.mp3", loopOverlap: 0.07},
         "intruder":     { name: "Intruder",                 file: "audio/music/intruder.mp3" },
         "duel":         { name: "Duel",                     file: "audio/music/duel.mp3" },
         "mantis":       { name: "Mantis Hymn",              file: "audio/music/mantis-hymn.mp3" },
@@ -253,7 +253,7 @@ const CONFIG = {
     // ============================================
     menuSounds: {
         "menu-intro":   { name: "Menu Intro",   file: "audio/sfx/menu-intro.mp3" },
-        "menu-loop":    { name: "Menu Loop",     file: "audio/sfx/menu-loop.mp3" },
+        "menu-loop":    { name: "Menu Loop",     file: "audio/sfx/menu-loop.mp3", loopOverlap: 0.11},
         "choice":       { name: "Choice",        file: "audio/sfx/choice.mp3" },
         "confirm":      { name: "Confirm",       file: "audio/sfx/confirm.mp3" },
         "return":       { name: "Return",        file: "audio/sfx/return.mp3" },
@@ -265,8 +265,8 @@ const CONFIG = {
     // ============================================
     alertSounds: {
         "discovery":        { name: "Eccolo!",                  file: "audio/sfx/discovery.mp3" },
-        "alert-loop":       { name: "Alert",                    file: "audio/sfx/alert-loop.mp3" },
-        "evasion-loop":     { name: "Evasion",                  file: "audio/sfx/evasion-loop.mp3" },
+        "alert-loop":       { name: "Alert",                    file: "audio/sfx/alert-loop.mp3", loopOverlap: 0.10},
+        "evasion-loop":     { name: "Evasion",                  file: "audio/sfx/evasion-loop.mp3", loopOverlap: 0.07},
         "this-way":         { name: "Da questa parte!",         file: "audio/sfx/this-way.mp3" },
         "return-to-posts":  { name: "Tornate ai vostri posti",  file: "audio/sfx/return-to-posts.mp3" },
     },

@@ -66,11 +66,15 @@ body {
     padding: 1rem;
     max-width: 900px;
     margin: 0 auto;
-    animation: fadeIn 0.5s ease;
 }
 
 .screen.active {
     display: block;
+    animation: fadeIn 0.5s ease;
+}
+
+#main-menu.active {
+    animation: none; /* il menu ha il proprio ingresso tramite la splash */
 }
 
 @keyframes fadeIn {
@@ -299,6 +303,14 @@ body {
     gap: 0.6rem;
 }
 
+.header-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    text-align: center;
+}
+
 .header-icon {
     color: var(--codec-green);
     font-size: 0.7rem;
@@ -442,7 +454,6 @@ body {
 .video-wrapper {
     position: relative;
     width: 100%;
-    max-width: 640px;
     margin: 0 auto 0.8rem auto;
     background: #000;
     border: 1px solid var(--border-green);
@@ -868,12 +879,8 @@ body {
 }
 
 .menu-splash.appear {
-    animation: splashFadeIn 3s ease forwards;
-}
-
-@keyframes splashFadeIn {
-    0% { opacity: 0; }
-    100% { opacity: 1; }
+    opacity: 1;
+    transition: opacity 3s linear;
 }
 
 .menu-splash img {

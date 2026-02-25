@@ -10,6 +10,7 @@ const App = {
     currentAmbientBtn: null,
     lastMusicId: null,
     musicIntroTimer: null,
+    newGameMode: false,
 
     // Seamless loop players
     musicLoop: null,
@@ -18,21 +19,50 @@ const App = {
     evasionLoop: null,
     menuMusicLoop: null,
     menuIntroAudio: null,
+    menuIntroRafId: null,
+
+    // Web Audio API
+    _audioCtx: null,
+    _bufferCache: {},
+    _menuGain: null,
+    _menuIntroSource: null,
+    _menuLoopSource: null,
 
     // Alert system
     alertState: 'normal',
     discoveryAudio: null,
 
     FADE_DURATION: 1500,
-    LOOP_OVERLAP: 0.05,
+    LOOP_OVERLAP: 0.15,
+
+    // ============================================
+    // WEB AUDIO API
+    // AudioContext creato durante un gesto utente per evitare stato suspended.
+    // I buffer decodificati vengono cachati per evitare refetch.
+    // ============================================
+    _initAudioCtx() {
+        if (!this._audioCtx) {
+            this._audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (this._audioCtx.state === 'suspended') {
+            this._audioCtx.resume().catch(() => {});
+        }
+        return this._audioCtx;
+    },
+
+    _loadBuffer(file) {
+        if (this._bufferCache[file]) return Promise.resolve(this._bufferCache[file]);
+        return fetch(file)
+            .then(r => r.arrayBuffer())
+            .then(ab => this._audioCtx.decodeAudioData(ab))
+            .then(buf => { this._bufferCache[file] = buf; return buf; });
+    },
 
     // Menu system
     menuItems: [
         { label: 'NEW GAME',    action: 'newGame' },
         { label: 'LOAD GAME',   action: 'loadGame' },
-        { label: 'OPTION',      action: 'option' },
         { label: 'BRIEFING',    action: 'briefing' },
-        { label: 'SPECIAL',     action: 'special' },
         { label: 'VR TRAINING', action: 'vrTraining' },
     ],
     menuIndex: 0,
@@ -40,44 +70,115 @@ const App = {
 
     // ============================================
     // SEAMLESS LOOP PLAYER
+    // Prova Web Audio API (AudioBufferSourceNode.loop = true, zero gap).
+    // Se WA non è pronto o fetch fallisce, usa il fallback dual-buffer new Audio().
     // ============================================
     createSeamlessLoop(file, volume, overlapOverride) {
+        const ctx = this._audioCtx;
+
+        if (ctx) {
+            const gainNode = ctx.createGain();
+            gainNode.gain.value = volume;
+            gainNode.connect(ctx.destination);
+            let source = null;
+            let active = false;
+            let currentVolume = volume;
+            let legacy = null;
+
+            // Se WA fallisce (fetch error, decode error), passa al dual-buffer legacy
+            const fallbackToLegacy = () => {
+                gainNode.disconnect();
+                legacy = App._loopLegacy(file, currentVolume, overlapOverride);
+                if (active) legacy.play();
+            };
+
+            return {
+                play() {
+                    active = true;
+                    if (legacy) { legacy.play(); return; }
+                    // Il buffer è già in cache se pre-warmato → _loadBuffer ritorna istantaneamente
+                    App._loadBuffer(file).then(buffer => {
+                        if (!active) return;
+                        if (source) { try { source.stop(0); } catch(e) {} }
+                        source = ctx.createBufferSource();
+                        source.buffer = buffer;
+                        source.loop = true;
+                        source.connect(gainNode);
+                        source.start(0);
+                    }).catch(e => {
+                        console.warn('WA loop fallback:', file, e.message);
+                        fallbackToLegacy();
+                    });
+                },
+                stop() {
+                    active = false;
+                    gainNode.gain.value = 0;
+                    if (source) { try { source.stop(0); } catch(e) {} source = null; }
+                    if (legacy) { legacy.stop(); }
+                },
+                setVolume(v) {
+                    currentVolume = v;
+                    gainNode.gain.value = v;
+                    if (legacy) legacy.setVolume(v);
+                },
+                getVolume() { return currentVolume; },
+                isPlaying() { return legacy ? legacy.isPlaying() : (active && source !== null); },
+            };
+        }
+
+        return this._loopLegacy(file, volume, overlapOverride);
+    },
+
+    _loopLegacy(file, volume, overlapOverride) {
         const self = this;
         const overlap = (overlapOverride !== undefined) ? overlapOverride : self.LOOP_OVERLAP;
         const loop = {
-            file: file,
-            volume: volume,
+            file, volume,
             audioA: new Audio(file),
             audioB: new Audio(file),
             current: 'A',
             active: true,
-            checkTimer: null,
+            rafId: null,
         };
-
         loop.audioA.volume = volume;
         loop.audioB.volume = volume;
 
+        const switchToNext = (current, next) => {
+            if (!loop.active) return;
+            next.currentTime = 0;
+            next.volume = loop.volume;
+            next.play().catch(e => console.warn(e.message));
+            loop.current = loop.current === 'A' ? 'B' : 'A';
+            scheduleNext();
+        };
+
         const scheduleNext = () => {
             if (!loop.active) return;
-
             const current = loop.current === 'A' ? loop.audioA : loop.audioB;
-            const next = loop.current === 'A' ? loop.audioB : loop.audioA;
+            const next    = loop.current === 'A' ? loop.audioB : loop.audioA;
+            let fired = false;
 
-            loop.checkTimer = setInterval(() => {
-                if (!loop.active) {
-                    clearInterval(loop.checkTimer);
-                    return;
-                }
+            const onEnded = () => {
+                if (!loop.active || fired) return;
+                fired = true;
+                if (loop.rafId) { cancelAnimationFrame(loop.rafId); loop.rafId = null; }
+                switchToNext(current, next);
+            };
+            current.addEventListener('ended', onEnded, { once: true });
+
+            const check = () => {
+                if (!loop.active) return;
                 const remaining = current.duration - current.currentTime;
-                if (remaining <= overlap && remaining > 0 && !isNaN(current.duration)) {
-                    clearInterval(loop.checkTimer);
-                    next.currentTime = 0;
-                    next.volume = loop.volume;
-                    next.play().catch(e => console.warn(e.message));
-                    loop.current = loop.current === 'A' ? 'B' : 'A';
-                    scheduleNext();
+                if (!isNaN(current.duration) && remaining > 0 && remaining <= overlap) {
+                    if (fired) return;
+                    fired = true;
+                    current.removeEventListener('ended', onEnded);
+                    switchToNext(current, next);
+                } else {
+                    loop.rafId = requestAnimationFrame(check);
                 }
-            }, 20);
+            };
+            loop.rafId = requestAnimationFrame(check);
         };
 
         return {
@@ -85,30 +186,17 @@ const App = {
                 loop.active = true;
                 loop.audioA.currentTime = 0;
                 loop.audioA.volume = loop.volume;
-                loop.audioA.play().then(() => {
-                    loop.current = 'A';
-                    scheduleNext();
-                }).catch(e => console.warn(e.message));
+                loop.audioA.play().then(() => { loop.current = 'A'; scheduleNext(); }).catch(e => console.warn(e.message));
             },
             stop() {
                 loop.active = false;
-                if (loop.checkTimer) clearInterval(loop.checkTimer);
-                loop.audioA.pause();
-                loop.audioA.currentTime = 0;
-                loop.audioB.pause();
-                loop.audioB.currentTime = 0;
+                if (loop.rafId) { cancelAnimationFrame(loop.rafId); loop.rafId = null; }
+                loop.audioA.pause(); loop.audioA.currentTime = 0;
+                loop.audioB.pause(); loop.audioB.currentTime = 0;
             },
-            setVolume(v) {
-                loop.volume = v;
-                loop.audioA.volume = v;
-                loop.audioB.volume = v;
-            },
-            getVolume() {
-                return loop.volume;
-            },
-            isPlaying() {
-                return loop.active && (!loop.audioA.paused || !loop.audioB.paused);
-            },
+            setVolume(v) { loop.volume = v; loop.audioA.volume = v; loop.audioB.volume = v; },
+            getVolume() { return loop.volume; },
+            isPlaying() { return loop.active && (!loop.audioA.paused || !loop.audioB.paused); },
         };
     },
 
@@ -116,6 +204,7 @@ const App = {
     // PRESS START → INTRO VIDEO → MENU
     // ============================================
     startIntroVideo() {
+        this._initAudioCtx(); // deve essere chiamato durante un gesto utente
         const video = document.getElementById('intro-video');
 
         // Show intro screen
@@ -198,31 +287,52 @@ const App = {
     // ============================================
     startMenuMusic() {
         this.stopMenuMusic();
+        this._initAudioCtx();
         const sounds = CONFIG.menuSounds;
+        const OVERLAP = 0.15;
 
-        // Play menu-intro first (lower volume)
+        // menu-intro: new Audio() garantito, non dipende da fetch/WA
         this.menuIntroAudio = new Audio(sounds['menu-intro'].file);
         this.menuIntroAudio.volume = 0.35;
         this.menuIntroAudio.play().catch(e => console.warn(e.message));
 
-        // When intro ends, start menu-loop in seamless loop
+        // menu-loop: pre-carica subito il buffer WA (se disponibile) mentre l'intro suona,
+        // così quando play() viene chiamato il buffer è già in cache → nessun ritardo
+        const loopCfg = sounds['menu-loop'];
+        if (this._audioCtx) this._loadBuffer(loopCfg.file).catch(() => {});
+        this.menuMusicLoop = this.createSeamlessLoop(loopCfg.file, 0.35, loopCfg.loopOverlap);
+
+        let loopStarted = false;
+
+        // Fallback ended: garantisce che il loop parta anche se RAF è throttlato
         this.menuIntroAudio.addEventListener('ended', () => {
+            if (this.menuIntroRafId) { cancelAnimationFrame(this.menuIntroRafId); this.menuIntroRafId = null; }
             this.menuIntroAudio = null;
-            const loopCfg = sounds['menu-loop'];
-            this.menuMusicLoop = this.createSeamlessLoop(loopCfg.file, 0.35, loopCfg.loopOverlap);
-            this.menuMusicLoop.play();
+            if (!loopStarted) { loopStarted = true; this.menuMusicLoop.play(); }
         }, { once: true });
+
+        // RAF: avvia il loop OVERLAP secondi prima della fine per transizione seamless
+        const checkEnd = () => {
+            if (!this.menuIntroAudio) return;
+            const audio = this.menuIntroAudio;
+            const remaining = audio.duration - audio.currentTime;
+            if (!isNaN(audio.duration) && remaining > 0 && remaining <= OVERLAP) {
+                loopStarted = true;
+                this.menuMusicLoop.play();
+                return;
+            }
+            this.menuIntroRafId = requestAnimationFrame(checkEnd);
+        };
+        this.menuIntroRafId = requestAnimationFrame(checkEnd);
     },
 
     stopMenuMusic() {
-        if (this.menuIntroAudio) {
-            this.menuIntroAudio.pause();
-            this.menuIntroAudio = null;
-        }
-        if (this.menuMusicLoop) {
-            this.menuMusicLoop.stop();
-            this.menuMusicLoop = null;
-        }
+        if (this.menuIntroRafId) { cancelAnimationFrame(this.menuIntroRafId); this.menuIntroRafId = null; }
+        if (this.menuIntroAudio) { this.menuIntroAudio.pause(); this.menuIntroAudio = null; }
+        if (this.menuMusicLoop) { this.menuMusicLoop.stop(); this.menuMusicLoop = null; }
+        if (this._menuIntroSource) { try { this._menuIntroSource.stop(0); } catch(e) {} this._menuIntroSource = null; }
+        if (this._menuLoopSource) { try { this._menuLoopSource.stop(0); } catch(e) {} this._menuLoopSource = null; }
+        if (this._menuGain) { this._menuGain.disconnect(); this._menuGain = null; }
     },
 
     updateMenuWheel() {
@@ -292,12 +402,14 @@ const App = {
             switch (item.action) {
                 case 'newGame':
                     this.stopMenuMusic();
+                    this.newGameMode = true;
                     this.showBlackTransition(() => {
                         this.selectStage(1);
                     });
                     break;
                 case 'loadGame':
                     this.stopMenuMusic();
+                    this.newGameMode = false;
                     this.showScreen('stage-select');
                     break;
                 case 'briefing':
@@ -307,10 +419,6 @@ const App = {
                 case 'vrTraining':
                     this.stopMenuMusic();
                     this.showScreen('vr-screen');
-                    break;
-                case 'option':
-                case 'special':
-                    // Placeholder
                     break;
             }
         }, 300);
@@ -326,7 +434,11 @@ const App = {
             this.updateMenuWheel();
             const splash = document.getElementById('menu-splash');
             const wheel = document.getElementById('menu-wheel');
-            if (splash) splash.classList.add('appear');
+            if (splash) {
+                splash.classList.remove('appear');
+                void splash.offsetHeight;
+                splash.classList.add('appear');
+            }
             if (wheel) {
                 void wheel.offsetHeight;
                 wheel.classList.add('appear');
@@ -422,6 +534,7 @@ const App = {
         const stage = CONFIG.stages.find(s => s.id === stageId);
         if (!stage) return;
 
+        this._initAudioCtx();
         this.currentStage = stage;
         this.stopAllAudio();
         this.lastMusicId = null;
@@ -437,6 +550,10 @@ const App = {
             status.style.borderColor = stage.isBoss ? 'rgba(255, 58, 58, 0.3)' : 'rgba(255, 140, 58, 0.3)';
         }
 
+        // Back button: ◄ MENU in newGameMode, ◄ MISSIONI in loadGame
+        const btnBack = document.getElementById('btn-stage-back');
+        if (btnBack) btnBack.textContent = this.newGameMode ? '◄ MENU' : '◄ MISSIONI';
+
         const btnIntro = document.getElementById('btn-intro');
         const btnOutro = document.getElementById('btn-outro');
         if (btnIntro) {
@@ -448,6 +565,19 @@ const App = {
             const hasOutro = stage.outro && stage.outro.length > 0;
             btnOutro.disabled = !hasOutro;
             btnOutro.style.opacity = hasOutro ? '1' : '0.3';
+        }
+
+        // NEXT STAGE button: visibile solo in newGameMode, disabilitato finché outro non visto
+        const btnNext = document.getElementById('btn-next-stage');
+        if (btnNext) {
+            const hasNextStage = !!CONFIG.stages.find(s => s.id === stage.id + 1);
+            if (this.newGameMode && hasNextStage) {
+                btnNext.style.display = '';
+                btnNext.disabled = true;
+                btnNext.style.opacity = '0.3';
+            } else {
+                btnNext.style.display = 'none';
+            }
         }
 
         this.stopVideo();
@@ -547,6 +677,39 @@ const App = {
         if (!this.currentStage) return;
         this.stopAllAudio();
         this.playVideo(this.currentStage.outro);
+
+        // Sblocca NEXT STAGE alla fine dell'outro (solo in newGameMode)
+        if (this.newGameMode) {
+            const player = document.getElementById('video-player');
+            if (player) {
+                player.addEventListener('ended', () => this.unlockNextStage(), { once: true });
+            }
+        }
+    },
+
+    unlockNextStage() {
+        const btnNext = document.getElementById('btn-next-stage');
+        if (btnNext && btnNext.style.display !== 'none') {
+            btnNext.disabled = false;
+            btnNext.style.opacity = '1';
+        }
+    },
+
+    goBackFromStage() {
+        this.stopAllAudio();
+        if (this.newGameMode) {
+            this.playMenuReturn();
+            this.showScreen('main-menu');
+        } else {
+            this.showScreen('stage-select');
+        }
+    },
+
+    goNextStage() {
+        if (!this.currentStage) return;
+        const nextStage = CONFIG.stages.find(s => s.id === this.currentStage.id + 1);
+        if (!nextStage) return;
+        this.selectStage(nextStage.id);
     },
 
     stopVideo() {
@@ -674,12 +837,9 @@ const App = {
 
             const alertCfg = sounds['alert-loop'];
             this.alertLoop = this.createSeamlessLoop(alertCfg.file, 0.8, alertCfg.loopOverlap);
-            const evasionCfg = sounds['evasion-loop'];
-            this.evasionLoop = this.createSeamlessLoop(evasionCfg.file, 0, evasionCfg.loopOverlap);
 
             setTimeout(() => {
                 this.alertLoop.play();
-                this.evasionLoop.play();
             }, 1000);
 
             this.alertState = 'alert';
@@ -702,7 +862,28 @@ const App = {
 
     triggerEvasion() {
         if (this.alertState !== 'alert') return;
-        this.crossfadeLoops(this.alertLoop, this.evasionLoop);
+
+        // Create evasionLoop fresh at target volume — avoids race condition
+        // where a silent pre-created loop may not be playing yet
+        if (this.evasionLoop) { this.evasionLoop.stop(); this.evasionLoop = null; }
+        const evasionCfg = CONFIG.alertSounds['evasion-loop'];
+        this.evasionLoop = this.createSeamlessLoop(evasionCfg.file, 0.8, evasionCfg.loopOverlap);
+        this.evasionLoop.play();
+
+        // Fade out alertLoop (keep it alive for potential alert→evasion→alert crossfade)
+        if (this.alertLoop) {
+            const steps = 30;
+            const interval = this.FADE_DURATION / steps;
+            const startVol = this.alertLoop.getVolume();
+            const alertLoopRef = this.alertLoop;
+            let step = 0;
+            const timer = setInterval(() => {
+                step++;
+                alertLoopRef.setVolume(Math.max(0, startVol * (1 - step / steps)));
+                if (step >= steps) { clearInterval(timer); alertLoopRef.setVolume(0); }
+            }, interval);
+        }
+
         this.alertState = 'evasion';
         this.updateAlertButtons();
     },
