@@ -13,36 +13,88 @@
     <!-- SCANLINE OVERLAY -->
     <div class="scanlines"></div>
 
-    <!-- BOOT SCREEN -->
-    <div id="boot-screen" class="screen active">
-        <div class="boot-content">
-            <div class="boot-logo">
-                <div class="codec-frame">
-                    <div class="codec-corner tl"></div>
-                    <div class="codec-corner tr"></div>
-                    <div class="codec-corner bl"></div>
-                    <div class="codec-corner br"></div>
-                    <div class="boot-inner">
-                        <div class="boot-text-glitch" data-text="MGS">MGS</div>
-                        <div class="boot-subtitle">BOARD GAME COMPANION</div>
-                        <div class="boot-line"></div>
-                        <div class="boot-desc">SHADOW MOSES ISLAND</div>
-                        <div class="boot-desc-small">TACTICAL ESPIONAGE OPERATION</div>
-                    </div>
-                </div>
-            </div>
-            <button class="btn-codec btn-start" onclick="App.showScreen('stage-select')">
-                <span class="btn-inner">▶ INIZIA MISSIONE</span>
-            </button>
-            <div class="boot-footer">
-                <span class="blink">●</span> PREMI PER CONTINUARE
+    <!-- PRESS START SCREEN -->
+    <div id="press-start-screen" class="screen active">
+        <div class="press-start-content" onclick="App.startIntroVideo()">
+            <img src="img/splash.png" class="splash-img" alt="Metal Gear Solid - The Board Game">
+            <div class="press-start-blink">
+                <span class="blink">●</span> PRESS START
             </div>
         </div>
     </div>
 
-    <!-- STAGE SELECT SCREEN -->
+    <!-- INTRO VIDEO SCREEN (skippable) -->
+    <div id="intro-screen" class="screen">
+        <div class="intro-video-container">
+            <video id="intro-video" playsinline>
+                <source src="video/intro.mp4" type="video/mp4">
+            </video>
+            <button class="skip-btn" onclick="App.skipIntro()">SKIP ▶▶</button>
+        </div>
+    </div>
+
+    <!-- MAIN MENU SCREEN (PS1 style) -->
+    <div id="main-menu" class="screen">
+        <div class="menu-bg">
+            <!-- Dark animated circuit background -->
+            <div class="menu-circuit-bg"></div>
+
+            <!-- Splash image appears from center -->
+            <div class="menu-splash" id="menu-splash">
+                <img src="img/splash.png" alt="Metal Gear Solid - The Board Game">
+            </div>
+
+            <!-- Menu wheel (appears after splash) -->
+            <div class="menu-wheel" id="menu-wheel">
+                <div class="menu-item prev" id="menu-prev"></div>
+                <div class="menu-item current" id="menu-current">
+                    <span class="menu-label" id="menu-label"></span>
+                </div>
+                <div class="menu-item next" id="menu-next"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- BRIEFING SCREEN -->
+    <div id="briefing-screen" class="screen">
+        <div class="screen-header">
+            <button class="btn-back" onclick="App.playMenuReturn(); App.stopBriefing(); App.showScreen('main-menu')">
+                ◄ MENU
+            </button>
+            <div class="header-left">
+                <span class="header-icon">◆</span>
+                <span class="header-title">BRIEFING</span>
+            </div>
+        </div>
+        <div class="briefing-video-container">
+            <video id="briefing-video" controls></video>
+        </div>
+    </div>
+
+    <!-- VR TRAINING SCREEN (placeholder) -->
+    <div id="vr-screen" class="screen">
+        <div class="screen-header">
+            <button class="btn-back" onclick="App.playMenuReturn(); App.showScreen('main-menu')">
+                ◄ MENU
+            </button>
+            <div class="header-left">
+                <span class="header-icon">◆</span>
+                <span class="header-title">VR TRAINING</span>
+            </div>
+        </div>
+        <div class="placeholder-screen">
+            <div class="placeholder-icon">◆</div>
+            <div class="placeholder-text">IN COSTRUZIONE</div>
+            <div class="placeholder-sub">Le missioni VR saranno disponibili prossimamente</div>
+        </div>
+    </div>
+
+    <!-- STAGE SELECT SCREEN (LOAD GAME) -->
     <div id="stage-select" class="screen">
         <div class="screen-header">
+            <button class="btn-back" onclick="App.playMenuReturn(); App.showScreen('main-menu')">
+                ◄ MENU
+            </button>
             <div class="header-left">
                 <span class="header-icon">◆</span>
                 <span class="header-title">MISSION SELECT</span>
@@ -62,7 +114,7 @@
     <!-- STAGE ACTIVE SCREEN (Video Player + Soundboard) -->
     <div id="stage-active" class="screen">
         <div class="screen-header">
-            <button class="btn-back" onclick="App.showScreen('stage-select')">
+            <button class="btn-back" onclick="App.stopAllAudio(); App.showScreen('stage-select')">
                 ◄ MISSIONI
             </button>
             <div class="header-left">
@@ -113,6 +165,14 @@
                     <button class="btn-codec btn-small" onclick="App.stopMusic()">
                         <span class="btn-inner">■ STOP</span>
                     </button>
+                </div>
+            </div>
+
+            <!-- Alert System -->
+            <div class="sound-category">
+                <div class="category-title">ALERT</div>
+                <div class="sound-buttons" id="alert-section">
+                    <!-- Generated by JS -->
                 </div>
             </div>
 

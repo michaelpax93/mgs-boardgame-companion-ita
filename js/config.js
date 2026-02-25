@@ -1,19 +1,53 @@
 /**
  * MGS BOARD GAME COMPANION - CONFIGURAZIONE
  * 
- * VIDEO LOCALI:
- * Metti i file .mp4 nella cartella "video/" e inserisci il percorso qui.
- * Esempio: intro: "video/stage01-intro.mp4"
- * Se non c'è video, lascia stringa vuota: ""
+ * VIDEO: metti i .mp4 nella cartella "video/" e scrivi il percorso
+ * SUONI: metti i .mp3 nelle cartelle audio/sfx/, audio/music/, audio/ambient/
  * 
- * SUONI:
- *   audio/sfx/      - effetti sonori
- *   audio/music/     - musica di sottofondo
- *   audio/ambient/   - suoni ambientali
+ * MUSIC MAP e AMBIENT MAP: ogni suono ha un ID univoco.
+ * Poi ogni stage ha "musicIds" e "ambientIds" con la lista di ID disponibili.
+ * 
+ * MUSICA DURANTE INTRO:
+ *   musicDuringIntro: true/false
+ *     - false (default): la musica parte dopo la fine dell'intro
+ *     - true: la musica parte durante l'intro
+ *   musicIntroDelay: secondi dall'inizio dell'intro (es. 10 = parte al secondo 10)
+ *   musicIntroVolume: volume da 0 a 100 durante l'intro (es. 20 = volume basso)
  */
 
 const CONFIG = {
 
+    // ============================================
+    // MAPPA MUSICHE (id → file)
+    // loopOverlap: secondi di sovrapposizione per loop seamless (opzionale, default 0.05)
+    // ============================================
+    music: {
+        "encounter":    { name: "Encounter",                file: "audio/music/encounter.mp3" },
+        "cavern":       { name: "Cavern",                   file: "audio/music/Cavern.mp3" },
+        "intruder":     { name: "Intruder",                 file: "audio/music/intruder.mp3" },
+        "duel":         { name: "Duel",                     file: "audio/music/duel.mp3" },
+        "mantis":       { name: "Mantis Hymn",              file: "audio/music/mantis-hymn.mp3" },
+        "blast":        { name: "Blast Furnace",            file: "audio/music/blast-furnace.mp3" },
+        "rex":          { name: "REX Lair",                 file: "audio/music/rex-lair.mp3" },
+        "escape":       { name: "Escape",                   file: "audio/music/escape.mp3" },
+        "best":         { name: "The Best Is Yet To Come",  file: "audio/music/best-is-yet-to-come.mp3" },
+    },
+
+    // ============================================
+    // MAPPA AMBIENTALI (id → file)
+    // loopOverlap: secondi di sovrapposizione per loop seamless (opzionale, default 0.05)
+    // ============================================
+    ambient: {
+        "arctic-wind":      { name: "Vento Artico",     file: "audio/ambient/arctic-wind.mp3" },
+        "machinery":        { name: "Macchinari",       file: "audio/ambient/machinery.mp3" },
+        "snow":             { name: "Neve",             file: "audio/ambient/snow.mp3" },
+        "base-alarm":       { name: "Allarme Base",     file: "audio/ambient/base-alarm.mp3" },
+        "radio-static":     { name: "Radio Statica",    file: "audio/ambient/radio-static.mp3" },
+    },
+
+    // ============================================
+    // STAGES DELLA CAMPAGNA
+    // ============================================
     stages: [
         {
             id: 1,
@@ -21,8 +55,13 @@ const CONFIG = {
             type: "SNEAKING MISSION",
             isBoss: false,
             description: "Infiltrazione a Shadow Moses Island",
-            intro: "",
-            outro: "",
+            intro: "video/Stage_01_Intro.mp4",
+            outro: "video/Stage_01_Outro.mp4",
+            musicIds: ["cavern"],
+            ambientIds: [],
+            musicDuringIntro: true,     // true = musica parte durante intro
+            musicIntroDelay: 67000,          // secondi dall'inizio dell'intro
+            musicIntroVolume: 20,        // volume 0-100 durante l'intro
         },
         {
             id: 2,
@@ -32,6 +71,11 @@ const CONFIG = {
             description: "Attraversamento dell'eliporto",
             intro: "",
             outro: "",
+            musicIds: [],
+            ambientIds: [],
+            musicDuringIntro: false,
+            musicIntroDelay: 0,
+            musicIntroVolume: 20,
         },
         {
             id: 3,
@@ -41,6 +85,11 @@ const CONFIG = {
             description: "Salvataggio del presidente della DARPA",
             intro: "",
             outro: "",
+            musicIds: [],
+            ambientIds: [],
+            musicDuringIntro: false,
+            musicIntroDelay: 0,
+            musicIntroVolume: 20,
         },
         {
             id: 4,
@@ -50,6 +99,11 @@ const CONFIG = {
             description: "Scontro con Revolver Ocelot",
             intro: "",
             outro: "",
+            musicIds: ["duel"],
+            ambientIds: [],
+            musicDuringIntro: false,
+            musicIntroDelay: 0,
+            musicIntroVolume: 20,
         },
         {
             id: 5,
@@ -59,6 +113,11 @@ const CONFIG = {
             description: "Imboscata del carro armato M1",
             intro: "",
             outro: "",
+            musicIds: ["duel"],
+            ambientIds: [],
+            musicDuringIntro: false,
+            musicIntroDelay: 0,
+            musicIntroVolume: 20,
         },
         {
             id: 6,
@@ -68,6 +127,11 @@ const CONFIG = {
             description: "Infiltrazione nel deposito testate nucleari",
             intro: "",
             outro: "",
+            musicIds: [],
+            ambientIds: [],
+            musicDuringIntro: false,
+            musicIntroDelay: 0,
+            musicIntroVolume: 20,
         },
         {
             id: 7,
@@ -77,6 +141,11 @@ const CONFIG = {
             description: "Scontro con il Cyborg Ninja",
             intro: "",
             outro: "",
+            musicIds: ["duel"],
+            ambientIds: [],
+            musicDuringIntro: false,
+            musicIntroDelay: 0,
+            musicIntroVolume: 20,
         },
         {
             id: 8,
@@ -86,6 +155,11 @@ const CONFIG = {
             description: "Scontro con Psycho Mantis",
             intro: "",
             outro: "",
+            musicIds: ["duel"],
+            ambientIds: [],
+            musicDuringIntro: false,
+            musicIntroDelay: 0,
+            musicIntroVolume: 20,
         },
         {
             id: 9,
@@ -95,6 +169,11 @@ const CONFIG = {
             description: "Fuga dalla cella di prigionia",
             intro: "",
             outro: "",
+            musicIds: [],
+            ambientIds: [],
+            musicDuringIntro: false,
+            musicIntroDelay: 0,
+            musicIntroVolume: 20,
         },
         {
             id: 10,
@@ -104,6 +183,11 @@ const CONFIG = {
             description: "Scontro con l'Hind D di Liquid",
             intro: "",
             outro: "",
+            musicIds: ["duel"],
+            ambientIds: [],
+            musicDuringIntro: false,
+            musicIntroDelay: 0,
+            musicIntroVolume: 20,
         },
         {
             id: 11,
@@ -113,6 +197,11 @@ const CONFIG = {
             description: "Duello con Sniper Wolf",
             intro: "",
             outro: "",
+            musicIds: ["duel"],
+            ambientIds: [],
+            musicDuringIntro: false,
+            musicIntroDelay: 0,
+            musicIntroVolume: 20,
         },
         {
             id: 12,
@@ -122,6 +211,11 @@ const CONFIG = {
             description: "Scontro con Vulcan Raven",
             intro: "",
             outro: "",
+            musicIds: ["duel"],
+            ambientIds: [],
+            musicDuringIntro: false,
+            musicIntroDelay: 0,
+            musicIntroVolume: 20,
         },
         {
             id: 13,
@@ -131,6 +225,11 @@ const CONFIG = {
             description: "Sovrascrittura del codice PAL",
             intro: "",
             outro: "",
+            musicIds: [],
+            ambientIds: [],
+            musicDuringIntro: false,
+            musicIntroDelay: 0,
+            musicIntroVolume: 20,
         },
         {
             id: 14,
@@ -140,39 +239,51 @@ const CONFIG = {
             description: "Battaglia finale contro Metal Gear REX",
             intro: "",
             outro: "",
+            musicIds: ["duel"],
+            ambientIds: [],
+            musicDuringIntro: false,
+            musicIntroDelay: 0,
+            musicIntroVolume: 20,
         },
     ],
 
+    // ============================================
+    // SUONI MENU
+    // loopOverlap: secondi di sovrapposizione per loop seamless (opzionale, default 0.05)
+    // ============================================
+    menuSounds: {
+        "menu-intro":   { name: "Menu Intro",   file: "audio/sfx/menu-intro.mp3" },
+        "menu-loop":    { name: "Menu Loop",     file: "audio/sfx/menu-loop.mp3" },
+        "choice":       { name: "Choice",        file: "audio/sfx/choice.mp3" },
+        "confirm":      { name: "Confirm",       file: "audio/sfx/confirm.mp3" },
+        "return":       { name: "Return",        file: "audio/sfx/return.mp3" },
+    },
+
+    // ============================================
+    // MAPPA SUONI ALERT (id → file)
+    // loopOverlap: secondi di sovrapposizione per loop seamless (opzionale, default 0.05)
+    // ============================================
+    alertSounds: {
+        "discovery":        { name: "Eccolo!",                  file: "audio/sfx/discovery.mp3" },
+        "alert-loop":       { name: "Alert",                    file: "audio/sfx/alert-loop.mp3" },
+        "evasion-loop":     { name: "Evasion",                  file: "audio/sfx/evasion-loop.mp3" },
+        "this-way":         { name: "Da questa parte!",         file: "audio/sfx/this-way.mp3" },
+        "return-to-posts":  { name: "Tornate ai vostri posti",  file: "audio/sfx/return-to-posts.mp3" },
+    },
+
+    // ============================================
+    // EFFETTI SONORI (globali, sempre visibili)
+    // ============================================
     sfx: [
-        { name: "Alert",         file: "audio/sfx/alert.mp3",         icon: "!" },
-        { name: "Alert Cancel",  file: "audio/sfx/alert-cancel.mp3",  icon: "~" },
-        { name: "Codec",         file: "audio/sfx/codec.mp3",         icon: "☎" },
-        { name: "Codec End",     file: "audio/sfx/codec-end.mp3",     icon: "☎" },
-        { name: "Game Over",     file: "audio/sfx/game-over.mp3",     icon: "✕" },
-        { name: "Item",          file: "audio/sfx/item.mp3",          icon: "★" },
-        { name: "Razione",       file: "audio/sfx/ration.mp3",        icon: "+" },
-        { name: "Scoperto",      file: "audio/sfx/spotted.mp3",       icon: "?" },
-        { name: "Continue",      file: "audio/sfx/continue.mp3",      icon: "▶" },
-        { name: "Guardia KO",    file: "audio/sfx/guard-ko.mp3",      icon: "◆" },
-    ],
-
-    music: [
-        { name: "Encounter",         file: "audio/music/encounter.mp3" },
-        { name: "Cavern",            file: "audio/music/cavern.mp3" },
-        { name: "Intruder",          file: "audio/music/intruder.mp3" },
-        { name: "Duel",              file: "audio/music/duel.mp3" },
-        { name: "Mantis Hymn",       file: "audio/music/mantis-hymn.mp3" },
-        { name: "Blast Furnace",     file: "audio/music/blast-furnace.mp3" },
-        { name: "REX Lair",          file: "audio/music/rex-lair.mp3" },
-        { name: "Escape",            file: "audio/music/escape.mp3" },
-        { name: "The Best Is Yet To Come", file: "audio/music/best-is-yet-to-come.mp3" },
-    ],
-
-    ambient: [
-        { name: "Vento Artico",    file: "audio/ambient/arctic-wind.mp3" },
-        { name: "Macchinari",      file: "audio/ambient/machinery.mp3" },
-        { name: "Neve",            file: "audio/ambient/snow.mp3" },
-        { name: "Allarme Base",    file: "audio/ambient/base-alarm.mp3" },
-        { name: "Radio Statica",   file: "audio/ambient/radio-static.mp3" },
+        { name: "Alert",         file: "audio/sfx/alert.mp3",         icon: "!",  isAlert: true },
+        { name: "Alert Cancel",  file: "audio/sfx/alert-cancel.mp3",  icon: "~",  isAlert: false },
+        { name: "Codec",         file: "audio/sfx/codec.mp3",         icon: "☎",  isAlert: false },
+        { name: "Codec End",     file: "audio/sfx/codec-end.mp3",     icon: "☎",  isAlert: false },
+        { name: "Game Over",     file: "audio/sfx/game-over.mp3",     icon: "✕",  isAlert: false },
+        { name: "Item",          file: "audio/sfx/item.mp3",          icon: "★",  isAlert: false },
+        { name: "Razione",       file: "audio/sfx/ration.mp3",        icon: "+",  isAlert: false },
+        { name: "Scoperto",      file: "audio/sfx/spotted.mp3",       icon: "?",  isAlert: false },
+        { name: "Continue",      file: "audio/sfx/continue.mp3",      icon: "▶",  isAlert: false },
+        { name: "Guardia KO",    file: "audio/sfx/guard-ko.mp3",      icon: "◆",  isAlert: false },
     ],
 };

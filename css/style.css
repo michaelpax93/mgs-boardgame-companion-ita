@@ -168,6 +168,15 @@ body {
     letter-spacing: 0.15em;
 }
 
+.boot-desc-solid {
+    font-family: var(--font-display);
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--codec-green-dim);
+    letter-spacing: 0.6em;
+    margin-top: 0.2rem;
+}
+
 .boot-desc-small {
     font-family: var(--font-mono);
     font-size: 0.65rem;
@@ -433,29 +442,28 @@ body {
 .video-wrapper {
     position: relative;
     width: 100%;
-    padding-bottom: 56.25%; /* 16:9 */
+    max-width: 640px;
+    margin: 0 auto 0.8rem auto;
     background: #000;
     border: 1px solid var(--border-green);
-    margin-bottom: 0.8rem;
     overflow: hidden;
 }
 
 .video-wrapper iframe,
-.video-wrapper #youtube-player {
-    position: absolute;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    border: none;
+.video-wrapper video {
+    width: 100%;
+    max-height: calc(100vh - 200px);
+    display: block;
+    background: #000;
+    object-fit: contain;
 }
 
 .video-placeholder {
-    position: absolute;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    padding: 2.5rem 1rem;
     background: linear-gradient(180deg, #080c08, #050805);
 }
 
@@ -690,4 +698,505 @@ body {
     border: 1px dashed var(--border-green);
     text-align: center;
     letter-spacing: 0.05em;
+}
+
+/* Disabled button (es. alert in boss fight) */
+.btn-sound.btn-disabled {
+    opacity: 0.25;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* ============================================
+   PRESS START SCREEN
+   ============================================ */
+#press-start-screen {
+    max-width: none;
+    padding: 0;
+    margin: 0;
+}
+
+.press-start-content {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 50;
+}
+
+.splash-img {
+    max-width: 90%;
+    max-height: 70vh;
+    object-fit: contain;
+    animation: splashBreath 3s ease-in-out infinite;
+}
+
+@keyframes splashBreath {
+    0%, 100% { filter: brightness(0.9); }
+    50% { filter: brightness(1.05); }
+}
+
+.press-start-blink {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    color: rgba(255, 180, 150, 0.7);
+    letter-spacing: 0.3em;
+    margin-top: 2rem;
+    animation: pressStartPulse 2s ease-in-out infinite;
+}
+
+.press-start-blink .blink {
+    color: var(--codec-orange);
+}
+
+@keyframes pressStartPulse {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 1; }
+}
+
+/* ============================================
+   INTRO VIDEO SCREEN
+   ============================================ */
+#intro-screen {
+    max-width: none;
+    padding: 0;
+    margin: 0;
+}
+
+.intro-video-container {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+}
+
+.intro-video-container video {
+    width: 100vw;
+    height: 100vh;
+    object-fit: contain;
+    background: #000;
+}
+
+/* Black transition screen */
+.black-transition {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    background: #000;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 1;
+}
+
+.black-transition.fade-out {
+    animation: blackFadeOut 0.5s ease forwards;
+}
+
+@keyframes blackFadeOut {
+    0% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+.skip-btn {
+    position: absolute;
+    bottom: 2rem;
+    right: 2rem;
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid rgba(255, 150, 150, 0.3);
+    color: rgba(255, 200, 200, 0.6);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.15em;
+    padding: 0.5rem 1.2rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.skip-btn:hover {
+    background: rgba(255, 50, 50, 0.15);
+    border-color: rgba(255, 150, 150, 0.6);
+    color: #fff;
+}
+
+/* ============================================
+   MAIN MENU (PS1 STYLE)
+   ============================================ */
+#main-menu {
+    padding: 0;
+    max-width: none;
+}
+
+#main-menu {
+    max-width: none;
+    padding: 0;
+    margin: 0;
+}
+
+.menu-bg {
+    position: relative;
+    width: 100%;
+    min-height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    padding-bottom: 8vh;
+}
+
+/* Splash image - pure fade in, fit by height */
+.menu-splash {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+    opacity: 0;
+}
+
+.menu-splash.appear {
+    animation: splashFadeIn 3s ease forwards;
+}
+
+@keyframes splashFadeIn {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+}
+
+.menu-splash img {
+    height: 100vh;
+    width: auto;
+    object-fit: contain;
+}
+
+/* Animated overlay effects on menu for movement feel */
+.menu-bg::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 50;
+    background: linear-gradient(
+        180deg,
+        transparent 0%,
+        rgba(255, 100, 40, 0.03) 45%,
+        rgba(255, 80, 30, 0.06) 50%,
+        rgba(255, 100, 40, 0.03) 55%,
+        transparent 100%
+    );
+    background-size: 100% 250%;
+    animation: scanSweep 4s linear infinite;
+    pointer-events: none;
+}
+
+@keyframes scanSweep {
+    0% { background-position: 0% 0%; }
+    100% { background-position: 0% 250%; }
+}
+
+.menu-bg::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 50;
+    background:
+        repeating-linear-gradient(
+            0deg,
+            transparent,
+            transparent 2px,
+            rgba(0, 0, 0, 0.08) 2px,
+            rgba(0, 0, 0, 0.08) 4px
+        );
+    animation: scanlineFlicker 0.1s steps(2) infinite;
+    pointer-events: none;
+}
+
+@keyframes scanlineFlicker {
+    0% { opacity: 0.4; }
+    50% { opacity: 0.6; }
+    100% { opacity: 0.4; }
+}
+
+/* Menu wheel */
+.menu-wheel {
+    position: fixed;
+    bottom: 10vh;
+    left: 0;
+    width: 100%;
+    z-index: 9000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    user-select: none;
+    height: 145px;
+    opacity: 0;
+    visibility: hidden;
+}
+
+.menu-wheel.appear {
+    opacity: 1;
+    visibility: visible;
+    animation: wheelFadeIn 0.8s ease forwards;
+}
+
+@keyframes wheelFadeIn {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+}
+
+/* Red circuit/schematic background */
+.menu-circuit-bg {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background:
+        radial-gradient(ellipse at 20% 30%, rgba(200, 80, 20, 0.12) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 60%, rgba(180, 60, 15, 0.1) 0%, transparent 45%),
+        radial-gradient(ellipse at 50% 80%, rgba(160, 50, 10, 0.08) 0%, transparent 40%),
+        linear-gradient(180deg, #0d0808 0%, #080505 40%, #0a0606 70%, #0d0808 100%);
+    z-index: 0;
+}
+
+/* Circuit line patterns - orange tinted */
+.menu-circuit-bg::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background-image:
+        linear-gradient(0deg, rgba(220, 100, 40, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(220, 100, 40, 0.04) 1px, transparent 1px),
+        linear-gradient(45deg, rgba(220, 100, 40, 0.025) 1px, transparent 1px),
+        linear-gradient(-45deg, rgba(220, 100, 40, 0.025) 1px, transparent 1px);
+    background-size: 50px 50px, 50px 50px, 70px 70px, 70px 70px;
+}
+
+/* Scattered glowing dots */
+.menu-circuit-bg::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 200%; height: 200%;
+    background-image:
+        radial-gradient(1px 1px at 10% 20%, rgba(255, 120, 40, 0.5), transparent),
+        radial-gradient(1px 1px at 25% 65%, rgba(255, 100, 30, 0.4), transparent),
+        radial-gradient(1.5px 1.5px at 45% 15%, rgba(255, 140, 50, 0.6), transparent),
+        radial-gradient(1px 1px at 60% 75%, rgba(255, 110, 35, 0.4), transparent),
+        radial-gradient(1px 1px at 75% 35%, rgba(255, 130, 45, 0.5), transparent),
+        radial-gradient(1.5px 1.5px at 85% 85%, rgba(255, 100, 30, 0.3), transparent),
+        radial-gradient(1px 1px at 35% 45%, rgba(255, 120, 40, 0.35), transparent),
+        radial-gradient(1px 1px at 90% 50%, rgba(255, 110, 35, 0.45), transparent),
+        radial-gradient(1px 1px at 55% 90%, rgba(255, 140, 50, 0.3), transparent),
+        radial-gradient(1.5px 1.5px at 15% 80%, rgba(255, 120, 40, 0.4), transparent);
+    animation: circuitDrift 20s linear infinite;
+}
+
+@keyframes circuitDrift {
+    0% { transform: translate(0, 0); }
+    25% { transform: translate(-3%, -2%); }
+    50% { transform: translate(-5%, -4%); }
+    75% { transform: translate(-2%, -1%); }
+    100% { transform: translate(0, 0); }
+}
+
+/* Menu wheel items */
+.menu-item {
+    font-family: var(--font-display);
+    letter-spacing: 0.2em;
+    padding: 0.6rem 1.5rem;
+    text-align: center;
+    min-width: 280px;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    transition: all 0.45s cubic-bezier(0.22, 0.61, 0.36, 1);
+    white-space: nowrap;
+}
+
+/* Non-selected items: green with dark green border */
+.menu-item.prev {
+    top: 0;
+    font-size: 1.1rem;
+    color: #3a7a3a;
+    font-weight: 700;
+    opacity: 0.5;
+    text-shadow: 0 0 4px rgba(40, 100, 40, 0.3);
+    -webkit-text-stroke: 0.3px #1a4a1a;
+}
+
+.menu-item.next {
+    top: 95px;
+    font-size: 1.1rem;
+    color: #3a7a3a;
+    font-weight: 700;
+    opacity: 0.5;
+    text-shadow: 0 0 4px rgba(40, 100, 40, 0.3);
+    -webkit-text-stroke: 0.3px #1a4a1a;
+}
+
+/* Selected item: red pulsing with bordeaux border */
+.menu-item.current {
+    top: 38px;
+    font-size: 1.8rem;
+    font-weight: 900;
+    color: #e03030;
+    text-shadow:
+        0 0 8px rgba(200, 30, 30, 0.6),
+        0 0 20px rgba(180, 20, 20, 0.3);
+    -webkit-text-stroke: 0.5px #6b1a1a;
+    opacity: 1;
+    animation: currentPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes currentPulse {
+    0%, 100% { 
+        color: #e03030;
+        text-shadow: 0 0 8px rgba(200, 30, 30, 0.6), 0 0 20px rgba(180, 20, 20, 0.3);
+    }
+    50% { 
+        color: #ff5050;
+        text-shadow: 0 0 12px rgba(255, 60, 60, 0.8), 0 0 30px rgba(200, 30, 30, 0.4);
+    }
+}
+
+/* Sliding animation - smoother with longer transition */
+.menu-wheel.slide-up .menu-item.prev {
+    top: -35px;
+    opacity: 0;
+}
+.menu-wheel.slide-up .menu-item.current {
+    top: 0;
+    font-size: 1.1rem;
+    color: #3a7a3a;
+    font-weight: 700;
+    opacity: 0.5;
+    text-shadow: 0 0 4px rgba(40, 100, 40, 0.3);
+    -webkit-text-stroke: 0.3px #1a4a1a;
+    animation: none;
+}
+.menu-wheel.slide-up .menu-item.next {
+    top: 38px;
+    font-size: 1.8rem;
+    font-weight: 900;
+    color: #e03030;
+    opacity: 1;
+    text-shadow: 0 0 8px rgba(200, 30, 30, 0.6), 0 0 20px rgba(180, 20, 20, 0.3);
+    -webkit-text-stroke: 0.5px #6b1a1a;
+}
+
+.menu-wheel.slide-down .menu-item.next {
+    top: 140px;
+    opacity: 0;
+}
+.menu-wheel.slide-down .menu-item.current {
+    top: 95px;
+    font-size: 1.1rem;
+    color: #3a7a3a;
+    font-weight: 700;
+    opacity: 0.5;
+    text-shadow: 0 0 4px rgba(40, 100, 40, 0.3);
+    -webkit-text-stroke: 0.3px #1a4a1a;
+    animation: none;
+}
+.menu-wheel.slide-down .menu-item.prev {
+    top: 38px;
+    font-size: 1.8rem;
+    font-weight: 900;
+    color: #e03030;
+    opacity: 1;
+    text-shadow: 0 0 8px rgba(200, 30, 30, 0.6), 0 0 20px rgba(180, 20, 20, 0.3);
+    -webkit-text-stroke: 0.5px #6b1a1a;
+}
+
+/* ============================================
+   BRIEFING VIDEO
+   ============================================ */
+.briefing-video-container {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: #000;
+}
+
+.briefing-video-container video {
+    width: 100%;
+    max-height: calc(100vh - 80px);
+    background: #000;
+    border: 1px solid var(--border-green);
+}
+
+/* ============================================
+   PLACEHOLDER SCREENS (VR, Option, Special)
+   ============================================ */
+.placeholder-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 60vh;
+    gap: 1rem;
+}
+
+.placeholder-screen .placeholder-icon {
+    font-size: 3rem;
+    color: var(--border-green);
+}
+
+.placeholder-screen .placeholder-text {
+    font-family: var(--font-display);
+    font-size: 1.2rem;
+    color: var(--text-dim);
+    letter-spacing: 0.2em;
+}
+
+.placeholder-screen .placeholder-sub {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    opacity: 0.5;
+    letter-spacing: 0.1em;
+}
+
+/* ============================================
+   RESPONSIVE - MENU
+   ============================================ */
+@media (max-width: 600px) {
+    .menu-logo-title {
+        font-size: 1.5rem;
+    }
+
+    .menu-item.current {
+        font-size: 1rem;
+    }
+
+    .menu-item.prev,
+    .menu-item.next {
+        font-size: 0.7rem;
+    }
+
+    .menu-snake img {
+        max-width: 80vw;
+    }
+
+    .skip-hint {
+        bottom: 1rem;
+        right: 1rem;
+    }
 }
