@@ -256,6 +256,15 @@ body {
     flex: 1;
 }
 
+.btn-video.playing {
+    border-color: var(--codec-green);
+    box-shadow: 0 0 15px rgba(58, 255, 126, 0.2);
+}
+.btn-video.playing .btn-inner {
+    background: rgba(58, 255, 126, 0.15);
+    animation: pulse 1.5s infinite;
+}
+
 .btn-stop .btn-inner {
     color: var(--codec-red);
 }

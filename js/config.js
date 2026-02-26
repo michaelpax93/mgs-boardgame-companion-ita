@@ -57,6 +57,9 @@ const CONFIG = {
             description: "Infiltrazione a Shadow Moses Island",
             intro: "video/Stage_01_Intro.mp4",
             outro: "video/Stage_01_Outro.mp4",
+            events: [
+                { id: "A", file: "video/Stage_01_A.mp4", stopMusic: false },
+            ],
             musicIds: ["cavern"],
             ambientIds: [],
             musicDuringIntro: true,     // true = musica parte durante intro

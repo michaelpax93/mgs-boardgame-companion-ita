@@ -8,6 +8,7 @@ const App = {
     currentStage: null,
     currentMusicBtn: null,
     currentAmbientBtn: null,
+    currentVideoBtn: null,
     lastMusicId: null,
     musicIntroTimer: null,
     newGameMode: false,
@@ -581,6 +582,7 @@ const App = {
         }
 
         this.stopVideo();
+        this.buildEventButtons(stage);
         this.buildMusicButtons(stage);
         this.buildAmbientButtons(stage);
         this.buildAlertSection(stage);
@@ -602,6 +604,12 @@ const App = {
     // ============================================
     // VIDEO PLAYER
     // ============================================
+    setActiveVideoBtn(btn) {
+        if (this.currentVideoBtn) this.currentVideoBtn.classList.remove('playing');
+        this.currentVideoBtn = btn || null;
+        if (this.currentVideoBtn) this.currentVideoBtn.classList.add('playing');
+    },
+
     playVideo(src) {
         if (!src || src.length === 0) return;
 
@@ -616,8 +624,33 @@ const App = {
             player.src = src;
             player.style.display = 'block';
             player.play().catch(e => console.warn('Video:', e.message));
+            // Rimuove l'highlight quando il video finisce naturalmente
+            player.addEventListener('ended', () => this.stopVideo(), { once: true });
         }
         if (stopBtn) stopBtn.style.display = '';
+    },
+
+    buildEventButtons(stage) {
+        const container = document.getElementById('event-buttons');
+        if (!container) return;
+        const events = stage.events || [];
+        container.innerHTML = events.map(ev => `
+            <button class="btn-codec btn-video" id="btn-event-${ev.id}" onclick="App.playEvent('${ev.id}')">
+                <span class="btn-inner">▶ EVENTO ${ev.id}</span>
+            </button>
+        `).join('');
+    },
+
+    playEvent(id) {
+        if (!this.currentStage) return;
+        const ev = (this.currentStage.events || []).find(e => e.id === id);
+        if (!ev || !ev.file) return;
+        if (ev.stopMusic) {
+            this.stopMusic();
+            this.stopAlertSystem();
+        }
+        this.setActiveVideoBtn(document.getElementById(`btn-event-${id}`));
+        this.playVideo(ev.file);
     },
 
     playIntroThenMusic() {
@@ -626,6 +659,7 @@ const App = {
         const player = document.getElementById('video-player');
         const ids = stage.musicIds || [];
 
+        this.setActiveVideoBtn(document.getElementById('btn-intro'));
         this.playVideo(stage.intro);
 
         if (stage.musicDuringIntro && ids.length > 0) {
@@ -671,12 +705,14 @@ const App = {
     playIntro() {
         if (!this.currentStage) return;
         this.stopAllAudio();
+        this.setActiveVideoBtn(document.getElementById('btn-intro'));
         this.playVideo(this.currentStage.intro);
     },
 
     playOutro() {
         if (!this.currentStage) return;
         this.stopAllAudio();
+        this.setActiveVideoBtn(document.getElementById('btn-outro'));
         this.playVideo(this.currentStage.outro);
 
         // Sblocca NEXT STAGE alla fine dell'outro (solo in newGameMode)
@@ -718,6 +754,7 @@ const App = {
             clearTimeout(this.musicIntroTimer);
             this.musicIntroTimer = null;
         }
+        this.setActiveVideoBtn(null);
 
         const wrapper = document.getElementById('video-wrapper');
         const player = document.getElementById('video-player');
