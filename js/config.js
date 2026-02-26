@@ -51,7 +51,7 @@ const CONFIG = {
     stages: [
         {
             id: 1,
-            name: "Cargo Dock",
+            name: "MOLO DI CARICO",
             type: "SNEAKING MISSION",
             isBoss: false,
             description: "Infiltrazione a Shadow Moses Island",
@@ -270,6 +270,37 @@ const CONFIG = {
         "this-way":         { name: "Da questa parte!",         file: "audio/sfx/this-way.mp3" },
         "return-to-posts":  { name: "Tornate ai vostri posti",  file: "audio/sfx/return-to-posts.mp3" },
     },
+
+    // ============================================
+    // SUONI GUARDIE (solo sneaking mission)
+    // Ogni voce ha una variante normale e una per alert/evasion
+    // ============================================
+    guardSounds: [
+        {
+            id: "cosa-e-stato",
+            nameNormal: "Cosa è stato?",
+            fileNormal: "audio/sfx/Cosa è stato.mp3",
+            nameAlert:  "Ho sentito qualcosa!",
+            fileAlert:  "audio/sfx/Ho sentito qualcosa.mp3",
+        },
+        {
+            id: "sembrava-qualcuno",
+            nameNormal: "Sembrava qualcuno",
+            fileNormal: "audio/sfx/Sembrava qualcuno.mp3",
+            nameAlert:  "Dove si sarà cacciato?",
+            fileAlert:  "audio/sfx/Dove si sarà cacciato.mp3",
+        },
+        { id: "impronte",   nameNormal: "Di chi sono queste impronte?", fileNormal: "audio/sfx/Di chi sono queste impronte.mp3" },
+        { id: "scatolone",  nameNormal: "E' solo uno scatolone",        fileNormal: "audio/sfx/E' solo uno scatolone.mp3" },
+        { id: "fuori",      nameNormal: "Fuori dai piedi!",             fileNormal: "audio/sfx/Fuori dai piedi.mp3" },
+        { id: "russare",    nameNormal: "Russare",                      fileNormal: "audio/sfx/Russare.mp3" },
+        { id: "sbadiglio",  nameNormal: "Sbadiglio",                    fileNormal: "audio/sfx/Sbadiglio.mp3" },
+        { id: "starnuto",       nameNormal: "Starnuto",         fileNormal: "audio/sfx/Starnuto.mp3" },
+        { id: "kill-silenziosa", nameNormal: "Kill silenziosa",  fileNormal: "audio/sfx/Kill-silenziosa.mp3" },
+        { id: "kill",            nameNormal: "Kill",             fileNormal: "audio/sfx/kill.mp3" },
+        { id: "guardia-ko",      nameNormal: "Guardia KO",       fileNormal: "audio/sfx/guardia ko.mp3" },
+        { id: "guardia-colpita", nameNormal: "Guardia colpita",  fileNormal: "audio/sfx/guardia colpita.mp3" },
+    ],
 
     // ============================================
     // EFFETTI SONORI (globali, sempre visibili)

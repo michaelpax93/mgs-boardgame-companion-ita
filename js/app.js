@@ -584,6 +584,7 @@ const App = {
         this.buildMusicButtons(stage);
         this.buildAmbientButtons(stage);
         this.buildAlertSection(stage);
+        this.buildGuardSection(stage);
 
         this.showScreen('stage-active');
 
@@ -825,6 +826,35 @@ const App = {
         `;
     },
 
+    buildGuardSection(stage) {
+        const category = document.getElementById('guard-category');
+        if (!category) return;
+
+        if (stage.isBoss) {
+            category.style.display = 'none';
+            return;
+        }
+
+        category.style.display = '';
+        this.updateGuardButtons();
+    },
+
+    playGuardSound(id) {
+        const s = CONFIG.guardSounds.find(g => g.id === id);
+        if (!s) return;
+        const file = (this.alertState !== 'normal' && s.fileAlert) ? s.fileAlert : s.fileNormal;
+        this.playSfx(file);
+    },
+
+    updateGuardButtons() {
+        const isAlert = this.alertState !== 'normal';
+        CONFIG.guardSounds.forEach(s => {
+            const btn = document.getElementById(`guard-btn-${s.id}`);
+            if (!btn) return;
+            btn.textContent = (isAlert && s.nameAlert) ? s.nameAlert : s.nameNormal;
+        });
+    },
+
     triggerAlert() {
         if (!this.currentStage || this.currentStage.isBoss) return;
         const sounds = CONFIG.alertSounds;
@@ -927,6 +957,7 @@ const App = {
                 btnReturn.disabled = false; btnReturn.style.opacity = '1';
                 break;
         }
+        this.updateGuardButtons();
     },
 
     crossfadeLoops(fadeOutLoop, fadeInLoop) {
