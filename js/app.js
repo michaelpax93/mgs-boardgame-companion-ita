@@ -33,6 +33,28 @@ const App = {
     alertState: 'normal',
     discoveryAudio: null,
 
+    // Listener intro-ended (tracciato per poterlo rimuovere se l'intro viene stoppata)
+    _introEndedListener: null,
+    // Flag: outro in corso (per sbloccare NEXT anche se stoppato manualmente)
+    _outroPlaying: false,
+    // Flag: not-save outro in corso (per tornare a stage-active anche se stoppato manualmente)
+    _notSaveOutroActive: false,
+    // Flag: video save terminato naturalmente (distingue stop manuale da fine naturale)
+    _saveVideoEnding: false,
+    // Contatore chiamate Mei Ling senza salvare (reset a 0 quando si salva)
+    _noSaveCount: 0,
+
+    // Save system
+    session: null,
+    cardScreenMode: 'save',
+    cardReturnScreen: 'main-menu',
+    selectedCard: 1,
+    selectedBlock: null,
+    pendingNextStageId: null,
+    cardPhase: 'card',       // 'card' | 'block' (solo save mode)
+    focusedBlock: null,      // blockId attualmente in focus (fase blocchi)
+    _visibleBlockIds: [],    // lista ordinata dei blockId mostrati (per navigazione tastiera)
+
     FADE_DURATION: 1500,
     LOOP_OVERLAP: 0.15,
 
@@ -44,6 +66,10 @@ const App = {
     _initAudioCtx() {
         if (!this._audioCtx) {
             this._audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            // Prima creazione: precarica tutti i menu sounds nel buffer cache (thread audio)
+            Object.values(CONFIG.menuSounds).forEach(s => {
+                this._loadBuffer(s.file).catch(() => {});
+            });
         }
         if (this._audioCtx.state === 'suspended') {
             this._audioCtx.resume().catch(() => {});
@@ -404,14 +430,17 @@ const App = {
                 case 'newGame':
                     this.stopMenuMusic();
                     this.newGameMode = true;
+                    this._noSaveCount = 0;
+                    this.session = this._newSession();
+                    this._persistSession();
                     this.showBlackTransition(() => {
                         this.selectStage(1);
                     });
                     break;
                 case 'loadGame':
                     this.stopMenuMusic();
-                    this.newGameMode = false;
-                    this.showScreen('stage-select');
+                    this.newGameMode = true;
+                    this.showLoadScreen();
                     break;
                 case 'briefing':
                     this.stopMenuMusic();
@@ -540,6 +569,7 @@ const App = {
         this.stopAllAudio();
         this.lastMusicId = null;
         this.alertState = 'normal';
+        if (this.session) { this.session.stage = stage.id; this._persistSession(); }
 
         const title = document.getElementById('active-stage-title');
         if (title) title.textContent = `STAGE ${String(stage.id).padStart(2, '0')} — ${stage.name.toUpperCase()}`;
@@ -568,6 +598,10 @@ const App = {
             btnOutro.style.opacity = hasOutro ? '1' : '0.3';
         }
 
+        // MEI LING: label "SALVATAGGIO" nel titolo ALERT visibile dal 2° stage in poi
+        const meiLingSection = document.getElementById('mei-ling-section');
+        if (meiLingSection) meiLingSection.style.display = stage.id >= 2 ? '' : 'none';
+
         // NEXT STAGE button: visibile solo in newGameMode, disabilitato finché outro non visto
         const btnNext = document.getElementById('btn-next-stage');
         if (btnNext) {
@@ -585,6 +619,7 @@ const App = {
         this.buildEventButtons(stage);
         this.buildMusicButtons(stage);
         this.buildAmbientButtons(stage);
+        this.buildGameOverButton(stage);
         this.buildAlertSection(stage);
         this.buildGuardSection(stage);
 
@@ -596,6 +631,7 @@ const App = {
             }, 300);
         } else {
             setTimeout(() => {
+                this.playFirstAmbient();
                 this.playFirstMusic();
             }, 300);
         }
@@ -628,6 +664,7 @@ const App = {
             player.addEventListener('ended', () => this.stopVideo(), { once: true });
         }
         if (stopBtn) stopBtn.style.display = '';
+        document.getElementById('stage-active')?.classList.add('stage-video-active');
     },
 
     buildEventButtons(stage) {
@@ -653,53 +690,63 @@ const App = {
         this.playVideo(ev.file);
     },
 
+    _afterIntroEnd() {
+        if (this.musicIntroTimer) {
+            clearTimeout(this.musicIntroTimer);
+            this.musicIntroTimer = null;
+        }
+        if (!this.ambientLoop || !this.ambientLoop.isPlaying()) this.playFirstAmbient();
+        if (this.musicLoop && this.musicLoop.isPlaying()) {
+            this.fadeMusicToNormalVolume();
+        } else if (!this.musicLoop || !this.musicLoop.isPlaying()) {
+            this.playFirstMusic();
+        }
+    },
+
     playIntroThenMusic() {
         if (!this.currentStage) return;
         const stage = this.currentStage;
         const player = document.getElementById('video-player');
         const ids = stage.musicIds || [];
 
-        this.setActiveVideoBtn(document.getElementById('btn-intro'));
-        this.playVideo(stage.intro);
+        // Rimuovi eventuale listener rimasto da un'intro precedente non completata
+        if (player && this._introEndedListener) {
+            player.removeEventListener('ended', this._introEndedListener);
+            this._introEndedListener = null;
+        }
 
         if (stage.musicDuringIntro && ids.length > 0) {
             const delay = stage.musicIntroDelay || 0;
             const introVolume = (stage.musicIntroVolume || 20) / 100;
-
             this.musicIntroTimer = setTimeout(() => {
                 this.playMusicAtVolume(ids[0], introVolume);
             }, delay);
-
-            if (player) {
-                player.onended = () => {
-                    player.onended = null;
-                    if (this.musicIntroTimer) {
-                        clearTimeout(this.musicIntroTimer);
-                        this.musicIntroTimer = null;
-                    }
-                    this.stopVideo();
-                    if (this.musicLoop) {
-                        this.fadeMusicToNormalVolume();
-                    } else {
-                        this.playFirstMusic();
-                    }
-                };
-            }
-        } else {
-            if (player) {
-                player.onended = () => {
-                    player.onended = null;
-                    this.stopVideo();
-                    this.playFirstMusic();
-                };
-            }
         }
+
+        this._introEndedListener = () => {
+            this._introEndedListener = null;
+            this.stopVideo();
+            this._afterIntroEnd();
+        };
+
+        if (player) {
+            player.addEventListener('ended', this._introEndedListener, { once: true });
+        }
+
+        this.setActiveVideoBtn(document.getElementById('btn-intro'));
+        this.playVideo(stage.intro);
     },
 
     playFirstMusic() {
         if (!this.currentStage) return;
         const ids = this.currentStage.musicIds || [];
         if (ids.length > 0) this.playMusic(ids[0]);
+    },
+
+    playFirstAmbient() {
+        if (!this.currentStage) return;
+        const ids = this.currentStage.ambientIds || [];
+        if (ids.length > 0) this.playAmbient(ids[0]);
     },
 
     playIntro() {
@@ -713,13 +760,17 @@ const App = {
         if (!this.currentStage) return;
         this.stopAllAudio();
         this.setActiveVideoBtn(document.getElementById('btn-outro'));
+        this._outroPlaying = this.newGameMode;
         this.playVideo(this.currentStage.outro);
 
         // Sblocca NEXT STAGE alla fine dell'outro (solo in newGameMode)
         if (this.newGameMode) {
             const player = document.getElementById('video-player');
             if (player) {
-                player.addEventListener('ended', () => this.unlockNextStage(), { once: true });
+                player.addEventListener('ended', () => {
+                    this._outroPlaying = false;
+                    this.unlockNextStage();
+                }, { once: true });
             }
         }
     },
@@ -749,6 +800,18 @@ const App = {
         this.selectStage(nextStage.id);
     },
 
+    openMeiLing() {
+        this._initAudioCtx(); // precarica buffer suoni menu per risposta immediata
+        this.cardScreenMode = 'save';
+        this.cardReturnScreen = 'stage-active';
+        this.pendingNextStageId = null;
+        this.selectedCard = 1;
+        this.selectedBlock = null;
+        this._renderCardScreen();
+        this.showScreen('card-screen');
+        setTimeout(() => this._autoPlaySaveIntro(), 300);
+    },
+
     stopVideo() {
         if (this.musicIntroTimer) {
             clearTimeout(this.musicIntroTimer);
@@ -762,6 +825,16 @@ const App = {
 
         if (player) {
             player.onended = null;
+            if (this._introEndedListener) {
+                player.removeEventListener('ended', this._introEndedListener);
+                this._introEndedListener = null;
+                // Intro interrotta manualmente: avvia ambient/musica se non già in corso
+                setTimeout(() => this._afterIntroEnd(), 0);
+            }
+            if (this._outroPlaying) {
+                this._outroPlaying = false;
+                this.unlockNextStage();
+            }
             player.pause();
             player.removeAttribute('src');
             player.load();
@@ -769,21 +842,24 @@ const App = {
         }
         if (stopBtn) stopBtn.style.display = 'none';
         if (wrapper) wrapper.style.display = 'none';
+        document.getElementById('stage-active')?.classList.remove('stage-video-active');
     },
 
     // ============================================
     // MUSIC - seamless loop
     // ============================================
     buildMusicButtons(stage) {
+        const category = document.getElementById('music-category');
         const container = document.getElementById('music-buttons');
         if (!container) return;
 
         const ids = stage.musicIds || [];
         if (ids.length === 0) {
-            container.innerHTML = '<div class="no-audio-msg">Nessuna musica per questo stage</div>';
+            if (category) category.style.display = 'none';
             return;
         }
 
+        if (category) category.style.display = '';
         container.innerHTML = ids.map(id => {
             const track = CONFIG.music[id];
             if (!track) return '';
@@ -861,6 +937,14 @@ const App = {
                 <span class="sfx-icon">✓</span> Tornate ai vostri posti
             </button>
         `;
+        // Bottone MEI LING: tutto a destra, visibile dal 2° stage in poi
+        const meiLingVisible = stage.id >= 2;
+        container.insertAdjacentHTML('beforeend',
+            `<div id="mei-ling-btn-wrapper" style="display:${meiLingVisible ? '' : 'none'}; margin-left:auto">
+                <button class="btn-codec btn-small btn-mei-ling" id="btn-mei-ling" onclick="App.openMeiLing()">
+                    <span class="btn-inner">MEI LING</span>
+                </button>
+            </div>`);
     },
 
     buildGuardSection(stage) {
@@ -880,7 +964,7 @@ const App = {
         const s = CONFIG.guardSounds.find(g => g.id === id);
         if (!s) return;
         const file = (this.alertState !== 'normal' && s.fileAlert) ? s.fileAlert : s.fileNormal;
-        this.playSfx(file);
+        this.playSfx(file, s.track);
     },
 
     updateGuardButtons() {
@@ -897,6 +981,7 @@ const App = {
         const sounds = CONFIG.alertSounds;
 
         if (this.alertState === 'normal') {
+            this.trackStat('alerts');
             this.stopMusic();
             this.discoveryAudio = new Audio(sounds['discovery'].file);
             this.discoveryAudio.volume = 0.8;
@@ -918,6 +1003,7 @@ const App = {
             thisWay.play().catch(e => console.warn(e.message));
 
         } else if (this.alertState === 'evasion') {
+            this.trackStat('alerts');
             this.crossfadeLoops(this.evasionLoop, this.alertLoop);
             const thisWay = new Audio(sounds['this-way'].file);
             thisWay.volume = 0.8;
@@ -1028,18 +1114,35 @@ const App = {
     // AMBIENT - seamless loop
     // ============================================
     buildAmbientButtons(stage) {
+        const category = document.getElementById('ambient-category');
         const container = document.getElementById('ambient-buttons');
         if (!container) return;
         const ids = stage.ambientIds || [];
         if (ids.length === 0) {
-            container.innerHTML = '<div class="no-audio-msg">Nessun suono ambientale per questo stage</div>';
+            if (category) category.style.display = 'none';
             return;
         }
+        if (category) category.style.display = '';
         container.innerHTML = ids.map(id => {
             const amb = CONFIG.ambient[id];
             if (!amb) return '';
             return `<button class="btn-sound" id="ambient-btn-${id}" onclick="App.playAmbient('${id}')">◊ ${amb.name}</button>`;
         }).join('');
+    },
+
+    buildGameOverButton(stage) {
+        // Aggiunge il bottone Game Over al primo contenitore visibile: musica > ambient
+        const musicCategory = document.getElementById('music-category');
+        const ambientCategory = document.getElementById('ambient-category');
+        const target = (musicCategory && musicCategory.style.display !== 'none')
+            ? document.getElementById('music-buttons')
+            : (ambientCategory && ambientCategory.style.display !== 'none')
+                ? document.getElementById('ambient-buttons')
+                : null;
+        if (target) {
+            target.insertAdjacentHTML('beforeend',
+                `<button class="btn-game-over btn-video" id="btn-game-over" onclick="App.triggerGameOver()">GAME OVER</button>`);
+        }
     },
 
     playAmbient(id) {
@@ -1078,16 +1181,63 @@ const App = {
             return;
         }
         container.innerHTML = nonAlertSfx.map((sfx, i) => `
-            <button class="btn-sound" onclick="App.playSfx('${sfx.file}')" title="${sfx.name}">
+            <button class="btn-sound" onclick="App.playSfx('${sfx.file}'${sfx.track ? `, '${sfx.track}'` : ''})" title="${sfx.name}">
                 <span class="sfx-icon">${sfx.icon || '♪'}</span> ${sfx.name}
             </button>
         `).join('');
     },
 
-    playSfx(file) {
-        const audio = new Audio(file);
-        audio.volume = 1.0;
-        audio.play().catch(e => console.warn(e.message));
+    triggerGameOver() {
+        if (!this.currentStage) return;
+        this.stopMusic();
+        this.stopAmbient();
+        this.stopAlertSystem();
+        this.trackStat('continues');
+        // Suono random dal pool dello stage (o globale), parte al secondo 4 del video
+        const pool = this.currentStage.gameOverSounds || CONFIG.gameOverSounds;
+        if (pool && pool.length > 0) {
+            const id = pool[Math.floor(Math.random() * pool.length)];
+            const file = id.includes('/') ? id : `${CONFIG.gameOverSoundsPath}${id}.mp3`;
+            const video = document.getElementById('video-player');
+            let soundPlayed = false;
+            const onTimeUpdate = () => {
+                if (!soundPlayed && video.currentTime >= 4) {
+                    soundPlayed = true;
+                    video.removeEventListener('timeupdate', onTimeUpdate);
+                    this.playSfx(file);
+                }
+            };
+            video.addEventListener('timeupdate', onTimeUpdate);
+        }
+        // Video Game Over
+        this.setActiveVideoBtn(document.getElementById('btn-game-over'));
+        this.playVideo('video/Game_Over.mp4');
+    },
+
+    _sfxPool: {},
+
+    playSfx(file, track) {
+        // Web Audio API: zero latency se il buffer è già decodificato in cache
+        if (this._audioCtx && this._bufferCache[file]) {
+            try {
+                if (this._audioCtx.state === 'suspended') this._audioCtx.resume();
+                const src = this._audioCtx.createBufferSource();
+                src.buffer = this._bufferCache[file];
+                src.connect(this._audioCtx.destination);
+                src.start(0);
+            } catch(e) { console.warn('playSfx WAA:', e); }
+        } else {
+            // Fallback HTML5 Audio pool
+            let audio = this._sfxPool[file];
+            if (audio) {
+                audio.currentTime = 0;
+            } else {
+                audio = new Audio(file);
+                audio.volume = 1.0;
+            }
+            audio.play().catch(e => console.warn(e.message));
+        }
+        if (track) this.trackStat(track);
     },
 
     // ============================================
@@ -1129,6 +1279,40 @@ const App = {
         // Intro skip
         if (this.currentScreen === 'intro-screen') {
             this.skipIntro();
+            return;
+        }
+
+        // Card screen: navigazione a due fasi (card → block)
+        if (this.currentScreen === 'card-screen') {
+            if (this.cardPhase === 'card') {
+                if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                    e.preventDefault();
+                    this.focusCard(this.selectedCard === 1 ? 2 : 1);
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (this.selectedCard) this.selectCard(this.selectedCard);
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    this.cardBack();
+                }
+            } else { // fase 'block'
+                if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    const ids = this._visibleBlockIds;
+                    if (!ids.length) return;
+                    let idx = ids.indexOf(this.focusedBlock);
+                    idx = e.key === 'ArrowDown'
+                        ? (idx + 1) % ids.length
+                        : (idx - 1 + ids.length) % ids.length;
+                    this.focusBlock(ids[idx]);
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (this.focusedBlock) this.selectBlock(this.focusedBlock);
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    this.cardBack();
+                }
+            }
             return;
         }
 
@@ -1175,14 +1359,532 @@ const App = {
     },
 
     // ============================================
+    // SAVE SYSTEM
+    // ============================================
+    SESSION_KEY: 'mgs_session',
+
+    initSession() {
+        const raw = localStorage.getItem(this.SESSION_KEY);
+        this.session = raw ? JSON.parse(raw) : this._newSession();
+    },
+
+    _newSession() {
+        return {
+            stage: 1,
+            vr_mission_unlocked: 0,
+            alerts: 0,
+            kills: 0,
+            kills_silent: 0,
+            rations_used: 0,
+            continues: 0,
+            saves: 0,
+            timestamp: new Date().toISOString(),
+        };
+    },
+
+    _persistSession() {
+        localStorage.setItem(this.SESSION_KEY, JSON.stringify(this.session));
+    },
+
+    trackStat(stat) {
+        if (!this.session || !(stat in this.session)) return;
+        this.session[stat]++;
+        this._persistSession();
+    },
+
+    _getCard(n) {
+        const raw = localStorage.getItem(`mgs_card_${n}`);
+        return raw ? JSON.parse(raw) : {};
+    },
+
+    _setCard(n, data) {
+        localStorage.setItem(`mgs_card_${n}`, JSON.stringify(data));
+    },
+
+    saveToBlock(cardNum, blockId) {
+        const card = this._getCard(cardNum);
+        this.session.saves++;
+        this.session.timestamp = new Date().toISOString();
+        card[blockId] = { ...this.session };
+        this._setCard(cardNum, card);
+        this._persistSession();
+    },
+
+    loadFromBlock(cardNum, blockId) {
+        const block = this._getCard(cardNum)[blockId];
+        if (!block) return false;
+        this.session = { ...block };
+        this._persistSession();
+        return true;
+    },
+
+    // ---- Save screen (tra uno stage e l'altro) ----
+
+    showSaveScreen(nextStageId) {
+        this.cardScreenMode = 'save';
+        this.pendingNextStageId = nextStageId;
+        this.selectedCard = 1;
+        this.selectedBlock = null;
+        this._renderCardScreen();
+        this.showScreen('card-screen');
+        // Avvia video intro se configurato
+        setTimeout(() => this._autoPlaySaveIntro(), 300);
+    },
+
+    _randomSaveVideo(list) {
+        if (!list || !list.length) return null;
+        return list[Math.floor(Math.random() * list.length)];
+    },
+
+    _autoPlaySaveIntro() {
+        const sc = CONFIG.saveScreen || {};
+        const unlockTabs = () => {
+            document.querySelectorAll('.card-tab').forEach(t => { t.disabled = false; });
+        };
+        // Se il conteggio annullamenti >= 3, l'intro diventa No_Save_Intro
+        let src;
+        if (this._noSaveCount >= 3 && sc.noSaveIntro) {
+            src = sc.noSaveIntro;
+        } else {
+            src = this._randomSaveVideo(sc.intro);
+        }
+        if (src) {
+            this.setActiveVideoBtn(document.getElementById('save-btn-intro'));
+            this._playSaveVideo(src, () => { unlockTabs(); this.focusCard(1); });
+        } else {
+            unlockTabs();
+            this.focusCard(1);
+        }
+    },
+
+    playSaveIntro() {
+        const src = this._randomSaveVideo(CONFIG.saveScreen && CONFIG.saveScreen.intro);
+        if (!src) return;
+        this.setActiveVideoBtn(document.getElementById('save-btn-intro'));
+        this._playSaveVideo(src);
+    },
+
+    playSaveOutro() {
+        const src = this._randomSaveVideo(CONFIG.saveScreen && CONFIG.saveScreen.outro);
+        if (!src) return;
+        this.setActiveVideoBtn(document.getElementById('save-btn-outro'));
+        const returnTo = this.cardReturnScreen;
+        this._playSaveVideo(src, returnTo === 'stage-active' ? () => {
+            this.cardReturnScreen = 'main-menu';
+            this.showScreen('stage-active');
+        } : null);
+    },
+
+    _playNotSaveOutro() {
+        this._noSaveCount++;
+        const count = this._noSaveCount;
+        const sc = CONFIG.saveScreen || {};
+
+        const navigateBack = () => {
+            this.cardReturnScreen = 'main-menu';
+            this.showScreen('stage-active');
+        };
+
+        const playVideo = (src, onEnd) => {
+            this._notSaveOutroActive = true;
+            this.setActiveVideoBtn(document.getElementById('save-btn-outro'));
+            this._playSaveVideo(src, () => {
+                this._notSaveOutroActive = false;
+                onEnd();
+            });
+        };
+
+        if (count <= 3) {
+            // Primo, secondo, terzo annullamento: No_Save_Outro_01..03
+            const list = sc.noSaveOutro || [];
+            const src = list[count - 1] || null;
+            if (!src) { navigateBack(); return; }
+            playVideo(src, navigateBack);
+        } else {
+            // Quarto annullamento in poi (stato "frustrato"):
+            // No_Save_Intro è già stato mostrato come intro d'ingresso → outro casuale No_Save_Silence
+            const silenceSrc = this._randomSaveVideo(sc.noSaveSilenceOutro);
+            if (silenceSrc) {
+                playVideo(silenceSrc, navigateBack);
+            } else {
+                navigateBack();
+            }
+        }
+    },
+
+    _lockCardControls(locked) {
+        document.querySelectorAll('.card-tab').forEach(t => { t.disabled = locked; });
+        const actionBtns = document.getElementById('card-action-btns');
+        if (actionBtns) actionBtns.querySelectorAll('button').forEach(b => { b.disabled = locked; b.style.opacity = locked ? '0.3' : ''; });
+    },
+
+    _playSaveVideo(src, onEnd) {
+        const wrapper = document.getElementById('save-video-wrapper');
+        const player = document.getElementById('save-video-player');
+        const placeholder = document.getElementById('save-video-placeholder');
+        const stopBtn = document.getElementById('save-btn-stop');
+        this._lockCardControls(true);
+        if (wrapper) wrapper.style.display = '';
+        if (placeholder) placeholder.style.display = 'none';
+        if (player) {
+            player.onended = null; // rimuove handler precedente prima di assegnarne uno nuovo
+            player.src = src;
+            player.style.display = 'block';
+            player.play().catch(e => console.warn('Save video:', e.message));
+            player.onended = () => {
+                this._saveVideoEnding = true;
+                this.stopSaveVideo();
+                this._saveVideoEnding = false;
+                if (onEnd) onEnd();
+            };
+        }
+        if (stopBtn) stopBtn.style.display = '';
+    },
+
+    stopSaveVideo() {
+        const wasNotSaveOutro = this._notSaveOutroActive;
+        this._notSaveOutroActive = false;
+        this.setActiveVideoBtn(null);
+        const player = document.getElementById('save-video-player');
+        const placeholder = document.getElementById('save-video-placeholder');
+        const stopBtn = document.getElementById('save-btn-stop');
+        if (player) {
+            player.onended = null; // azzera handler per evitare listener stantii
+            player.pause();
+            player.removeAttribute('src');
+            player.load();
+            player.style.display = 'none';
+        }
+        if (placeholder) placeholder.style.display = '';
+        if (stopBtn) stopBtn.style.display = 'none';
+        this._lockCardControls(false);
+        // Se l'outro "non salvato" viene stoppato MANUALMENTE (non a fine naturale), torna a stage-active
+        if (wasNotSaveOutro && !this._saveVideoEnding) {
+            this.cardReturnScreen = 'main-menu';
+            this.showScreen('stage-active');
+        }
+    },
+
+    // NEXT: procede allo stage successivo (con o senza aver salvato)
+    cardNext() {
+        this.stopSaveVideo();
+        const id = this.pendingNextStageId;
+        this.pendingNextStageId = null;
+        this.cardReturnScreen = 'main-menu';
+        if (id) this.selectStage(id);
+    },
+
+    // MENU / BACK: torna allo schermo precedente
+    cardBack() {
+        this.pendingNextStageId = null;
+        const returnTo = this.cardReturnScreen || 'main-menu';
+
+        // Modalità Mei Ling (save da stage-active)
+        if (this.cardScreenMode === 'save' && returnTo === 'stage-active') {
+            if (this.cardPhase === 'block') {
+                // Fase blocchi → torna alla selezione memory card
+                this.stopSaveVideo();
+                this.playSfx(CONFIG.menuSounds['return'].file);
+                this.cardPhase = 'card';
+                this.focusedBlock = null;
+                this._visibleBlockIds = [];
+                const cardBlocks = document.getElementById('card-blocks');
+                if (cardBlocks) cardBlocks.style.display = 'none';
+                const confirmArea = document.getElementById('block-confirm-area');
+                if (confirmArea) { confirmArea.innerHTML = ''; confirmArea.style.display = 'none'; }
+            } else {
+                // Fase card → esci con No_Save outro
+                this.stopSaveVideo();
+                this.playSfx(CONFIG.menuSounds['return'].file);
+                this._playNotSaveOutro();
+            }
+            return;
+        }
+
+        this.stopSaveVideo();
+        this.cardReturnScreen = 'main-menu';
+        if (returnTo === 'stage-active') {
+            this.playSfx(CONFIG.menuSounds['return'].file);
+            this.showScreen('stage-active');
+        } else {
+            this.playMenuReturn();
+            this.showScreen('main-menu');
+        }
+    },
+
+    // ---- Load screen (da main menu) ----
+
+    showLoadScreen() {
+        this._initAudioCtx(); // precarica buffer suoni menu per risposta immediata
+        this.cardScreenMode = 'load';
+        this.cardReturnScreen = 'main-menu';
+        this.pendingNextStageId = null;
+        this.selectedCard = 1;
+        this.selectedBlock = null;
+        this._renderCardScreen();
+        this.showScreen('card-screen');
+    },
+
+    // ---- UI comune ----
+
+    _renderCardScreen() {
+        const isSave = this.cardScreenMode === 'save';
+        const title = document.getElementById('card-screen-title');
+        const nextBtn = document.getElementById('btn-card-next');
+        const videoSection = document.getElementById('save-video-section');
+        const confirmArea = document.getElementById('block-confirm-area');
+        const actionBtns = document.getElementById('card-action-btns');
+        if (title) title.textContent = isSave ? 'SALVATAGGIO' : 'CARICA PARTITA';
+        if (nextBtn) nextBtn.style.display = (isSave && this.cardReturnScreen !== 'stage-active') ? '' : 'none';
+        if (videoSection) videoSection.style.display = isSave ? '' : 'none';
+        if (confirmArea) { confirmArea.innerHTML = ''; confirmArea.style.display = 'none'; }
+        if (actionBtns) actionBtns.style.display = isSave ? '' : 'none';
+        // Reset fase di selezione
+        this.cardPhase = 'card';
+        this.focusedBlock = null;
+        this._visibleBlockIds = [];
+        // Nessun tab selezionato all'apertura: blocchi nascosti finché l'utente non clicca una Memory Card
+        document.querySelectorAll('.card-tab').forEach(t => t.classList.remove('active'));
+        const cardBlocks = document.getElementById('card-blocks');
+        if (cardBlocks) {
+            cardBlocks.style.display = 'none';
+            cardBlocks.classList.add('card-blocks--save'); // max 5 blocchi + scroll in entrambe le modalità
+        }
+        // In modalità Mei Ling i btn intro/outro sono nascosti (tutto è automatico)
+        const isMeiLing = isSave && this.cardReturnScreen === 'stage-active';
+        const btnIntro = document.getElementById('save-btn-intro');
+        const btnOutro = document.getElementById('save-btn-outro');
+        if (isMeiLing) {
+            if (btnIntro) btnIntro.style.display = 'none';
+            if (btnOutro) btnOutro.style.display = 'none';
+            // Disabilita i tab finché il video intro non è finito
+            document.querySelectorAll('.card-tab').forEach(t => { t.disabled = true; });
+        } else {
+            // Modalità load game: mostra i btn in base alla config video
+            const introList = CONFIG.saveScreen && CONFIG.saveScreen.intro;
+            const outroList = CONFIG.saveScreen && CONFIG.saveScreen.outro;
+            const hasIntro = Array.isArray(introList) ? introList.length > 0 : !!introList;
+            const hasOutro = Array.isArray(outroList) ? outroList.length > 0 : !!outroList;
+            if (btnIntro) { btnIntro.style.display = ''; btnIntro.disabled = !hasIntro; btnIntro.style.opacity = hasIntro ? '1' : '0.3'; }
+            if (btnOutro) { btnOutro.style.display = ''; btnOutro.disabled = !hasOutro; btnOutro.style.opacity = hasOutro ? '1' : '0.3'; }
+        }
+    },
+
+    // Evidenzia il tab senza mostrare i blocchi (navigazione con frecce o fine intro)
+    focusCard(n) {
+        // Ignorato se già in fase blocchi (save mode) o se tab ancora disabilitati (intro in corso)
+        if (this.cardPhase === 'block') return;
+        const tabs = document.querySelectorAll('.card-tab');
+        if (tabs[0] && tabs[0].disabled) return;
+        const changed = this.selectedCard !== n;
+        this.selectedCard = n;
+        document.querySelectorAll('.card-tab').forEach((t, i) => t.classList.toggle('active', i + 1 === n));
+        if (changed) this.playSfx(CONFIG.menuSounds['choice'].file);
+    },
+
+    // Evidenzia un blocco (hover mouse o frecce su/giù). silent=true: nessun suono
+    focusBlock(blockId, silent = false) {
+        const changed = this.focusedBlock !== blockId;
+        this.focusedBlock = blockId;
+        document.querySelectorAll('.card-block').forEach(el => el.classList.remove('focused'));
+        document.getElementById(`card-block-${blockId}`)?.classList.add('focused');
+        if (!silent && changed) this.playSfx(CONFIG.menuSounds['choice'].file);
+    },
+
+    // Conferma la selezione corrente in base alla fase (card → selectCard, block → selectBlock)
+    cardConfirm() {
+        if (this.cardPhase === 'card') {
+            if (this.selectedCard) this.selectCard(this.selectedCard);
+        } else if (this.cardPhase === 'block') {
+            if (this.focusedBlock) this.selectBlock(this.focusedBlock);
+        }
+    },
+
+    // Conferma la memory card: mostra i blocchi (Enter o click sul tab)
+    selectCard(n) {
+        // Bloccato se tab ancora disabilitati (intro in corso)
+        const tabs = document.querySelectorAll('.card-tab');
+        if (tabs[0] && tabs[0].disabled) return;
+        // Suono PRIMA di qualsiasi lavoro DOM per evitare ritardo percepito
+        this.playSfx(CONFIG.menuSounds['confirm-save'].file);
+        this.selectedCard = n;
+        this.selectedBlock = null;
+        this.focusedBlock = null;
+        const confirmArea = document.getElementById('block-confirm-area');
+        if (confirmArea) { confirmArea.innerHTML = ''; confirmArea.style.display = 'none'; }
+        document.querySelectorAll('.card-tab').forEach((t, i) => t.classList.toggle('active', i + 1 === n));
+        this._buildCardBlocks();
+        const cardBlocks = document.getElementById('card-blocks');
+        if (cardBlocks) cardBlocks.style.display = '';
+        // In save mode: passa alla fase blocchi e auto-focus il primo blocco (silenzioso)
+        if (this.cardScreenMode === 'save') {
+            this.cardPhase = 'block';
+            if (this._visibleBlockIds.length > 0) {
+                this.focusBlock(this._visibleBlockIds[0], true);
+            }
+        }
+    },
+
+    _buildCardBlocks() {
+        const container = document.getElementById('card-blocks');
+        if (!container) return;
+        const card = this._getCard(this.selectedCard);
+
+        if (this.cardScreenMode === 'save') {
+            // Modalità salvataggio: mostra i blocchi occupati + il primo blocco libero come [NEW BLOCK]
+            let firstEmptyFound = false;
+            const rows = [];
+            this._visibleBlockIds = [];
+            for (let i = 0; i < 15; i++) {
+                const id = `block_${String(i + 1).padStart(2, '0')}`;
+                const block = card[id];
+                const num = String(i + 1).padStart(2, '0');
+                if (block) {
+                    const stage = CONFIG.stages.find(s => s.id === block.stage);
+                    const stageName = stage ? stage.name : `Stage ${block.stage}`;
+                    const focCls = this.focusedBlock === id ? ' focused' : '';
+                    this._visibleBlockIds.push(id);
+                    rows.push(`<div class="card-block used${focCls}" id="card-block-${id}" onclick="App.selectBlock('${id}')" onmouseover="App.focusBlock('${id}')">
+                        <span class="block-num">BLOCK ${num}</span>
+                        <span class="block-stage-name">${stageName}</span>
+                    </div>`);
+                } else if (!firstEmptyFound) {
+                    firstEmptyFound = true;
+                    const focCls = this.focusedBlock === id ? ' focused' : '';
+                    this._visibleBlockIds.push(id);
+                    rows.push(`<div class="card-block empty new-block${focCls}" id="card-block-${id}" onclick="App.selectBlock('${id}')" onmouseover="App.focusBlock('${id}')">
+                        <span class="block-num">BLOCK ${num}</span>
+                        <span class="block-new">[NEW BLOCK]</span>
+                    </div>`);
+                }
+                // altri blocchi vuoti: non mostrati
+            }
+            container.innerHTML = rows.join('');
+        } else {
+            // Modalità caricamento: mostra tutti i 15 blocchi
+            this._visibleBlockIds = [];
+            container.innerHTML = Array.from({ length: 15 }, (_, i) => {
+                const id = `block_${String(i + 1).padStart(2, '0')}`;
+                const block = card[id];
+                const disabledClass = !block ? 'card-block--disabled' : '';
+                if (block) this._visibleBlockIds.push(id);
+                let info = '';
+                if (block) {
+                    const stage = CONFIG.stages.find(s => s.id === block.stage);
+                    const stageName = stage ? stage.name : `STAGE ${String(block.stage).padStart(2, '0')}`;
+                    const date = new Date(block.timestamp).toLocaleDateString('it-IT');
+                    info = `<span class="block-stage">${stageName}</span>
+                            <span class="block-date">${date}</span>`;
+                } else {
+                    info = `<span class="block-empty">— VUOTO —</span>`;
+                }
+                const hoverAttr = block ? ` onmouseover="App.focusBlock('${id}')"` : '';
+                return `<div class="card-block ${block ? 'used' : 'empty'} ${disabledClass}"
+                            id="card-block-${id}" onclick="App.selectBlock('${id}')"${hoverAttr}>
+                            <span class="block-num">BLOCK ${String(i + 1).padStart(2, '0')}</span>
+                            ${info}
+                        </div>`;
+            }).join('');
+        }
+    },
+
+    selectBlock(blockId) {
+        if (this.cardScreenMode === 'save') {
+            // Save mode: conferma diretta senza dialogo intermedio
+            this._doSave(blockId);
+            return;
+        }
+        // Load mode: chiedi conferma
+        const block = this._getCard(this.selectedCard)[blockId];
+        if (!block) return;
+        this.playSfx(CONFIG.menuSounds['confirm-save'].file);
+        this.selectedBlock = blockId;
+        document.querySelectorAll('.card-block').forEach(el => el.classList.remove('selected'));
+        document.getElementById(`card-block-${blockId}`)?.classList.add('selected');
+        const confirmArea = document.getElementById('block-confirm-area');
+        if (!confirmArea) return;
+        confirmArea.innerHTML = `
+            <span class="confirm-msg">Caricare questa partita?</span>
+            <button class="btn-codec btn-small" onclick="App.confirmBlock()"><span class="btn-inner">✓ CONFERMA</span></button>
+            <button class="btn-codec btn-small btn-stop" onclick="App.cancelBlock()"><span class="btn-inner">✗ ANNULLA</span></button>
+        `;
+        confirmArea.style.display = '';
+    },
+
+    confirmBlock() {
+        if (!this.selectedBlock) return;
+        const blockId = this.selectedBlock;
+        this.selectedBlock = null;
+        this.playSfx(CONFIG.menuSounds['confirm-save'].file);
+        if (this.cardScreenMode === 'save') {
+            this._doSave(blockId);
+        } else {
+            this._doLoad(blockId);
+        }
+    },
+
+    cancelBlock() {
+        this.playSfx(CONFIG.menuSounds['return'].file);
+        this.selectedBlock = null;
+        document.querySelectorAll('.card-block').forEach(el => el.classList.remove('selected'));
+        const confirmArea = document.getElementById('block-confirm-area');
+        if (confirmArea) { confirmArea.style.display = 'none'; confirmArea.innerHTML = ''; }
+    },
+
+    _doSave(blockId) {
+        this.playSfx(CONFIG.menuSounds['confirm-save'].file);
+        this._noSaveCount = 0; // Reset contatore "non hai salvato"
+        this.saveToBlock(this.selectedCard, blockId);
+        const confirmArea = document.getElementById('block-confirm-area');
+        if (confirmArea) { confirmArea.style.display = 'none'; confirmArea.innerHTML = ''; }
+        this._buildCardBlocks();
+
+        // Mostra popup "salvataggio in corso", poi avvia outro dopo 3 secondi
+        const popup = document.getElementById('save-popup');
+        const popupText = document.getElementById('save-popup-text');
+        if (popup) {
+            if (popupText) popupText.textContent = 'SALVATAGGIO IN CORSO...';
+            popup.style.display = 'flex';
+            setTimeout(() => {
+                popup.style.display = 'none';
+                this.playSaveOutro();
+            }, 3000);
+        } else {
+            this.playSaveOutro();
+        }
+    },
+
+    _doLoad(blockId) {
+        if (this.loadFromBlock(this.selectedCard, blockId)) {
+            this.newGameMode = true;
+            this.stopSaveVideo();
+            this.stopAllAudio();
+            // Schermo nero per 2 secondi (sensazione di caricamento)
+            const current = document.querySelector('.screen.active');
+            if (current) current.classList.remove('active');
+            this.currentScreen = '';
+            setTimeout(() => this.selectStage(this.session.stage), 2000);
+        }
+    },
+
+    // ============================================
     // INIT
     // ============================================
     init() {
+        this.initSession();
         this.initStageGrid();
         this.buildSfxButtons();
         this.initMenuTouch();
 
         document.addEventListener('keydown', (e) => this.handleKeydown(e));
+
+        // Preload suoni menu nel pool per riproduzione immediata
+        Object.values(CONFIG.menuSounds).forEach(s => {
+            const a = new Audio(s.file);
+            a.preload = 'auto';
+            a.load();
+            this._sfxPool[s.file] = a;
+        });
     }
 };
 

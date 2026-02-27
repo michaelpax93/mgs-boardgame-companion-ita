@@ -65,6 +65,7 @@ const CONFIG = {
             musicDuringIntro: true,     // true = musica parte durante intro
             musicIntroDelay: 67000,          // secondi dall'inizio dell'intro
             musicIntroVolume: 20,        // volume 0-100 durante l'intro
+            gameOverSounds: ["02", "03", "04", "05"],
         },
         {
             id: 2,
@@ -72,13 +73,14 @@ const CONFIG = {
             type: "SNEAKING MISSION",
             isBoss: false,
             description: "Attraversamento dell'eliporto",
-            intro: "",
-            outro: "",
+            intro: "video/Stage_02_Intro.mp4",
+            outro: "video/Stage_02_Outro.mp4",
             musicIds: [],
-            ambientIds: [],
+            ambientIds: ["arctic-wind"],
             musicDuringIntro: false,
             musicIntroDelay: 0,
             musicIntroVolume: 20,
+            gameOverSounds: ["02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"],
         },
         {
             id: 3,
@@ -93,6 +95,7 @@ const CONFIG = {
             musicDuringIntro: false,
             musicIntroDelay: 0,
             musicIntroVolume: 20,
+            gameOverSounds: null,
         },
         {
             id: 4,
@@ -107,6 +110,7 @@ const CONFIG = {
             musicDuringIntro: false,
             musicIntroDelay: 0,
             musicIntroVolume: 20,
+            gameOverSounds: null,
         },
         {
             id: 5,
@@ -121,6 +125,7 @@ const CONFIG = {
             musicDuringIntro: false,
             musicIntroDelay: 0,
             musicIntroVolume: 20,
+            gameOverSounds: null,
         },
         {
             id: 6,
@@ -135,6 +140,7 @@ const CONFIG = {
             musicDuringIntro: false,
             musicIntroDelay: 0,
             musicIntroVolume: 20,
+            gameOverSounds: null,
         },
         {
             id: 7,
@@ -149,6 +155,7 @@ const CONFIG = {
             musicDuringIntro: false,
             musicIntroDelay: 0,
             musicIntroVolume: 20,
+            gameOverSounds: null,
         },
         {
             id: 8,
@@ -163,6 +170,7 @@ const CONFIG = {
             musicDuringIntro: false,
             musicIntroDelay: 0,
             musicIntroVolume: 20,
+            gameOverSounds: null,
         },
         {
             id: 9,
@@ -177,6 +185,7 @@ const CONFIG = {
             musicDuringIntro: false,
             musicIntroDelay: 0,
             musicIntroVolume: 20,
+            gameOverSounds: null,
         },
         {
             id: 10,
@@ -191,6 +200,7 @@ const CONFIG = {
             musicDuringIntro: false,
             musicIntroDelay: 0,
             musicIntroVolume: 20,
+            gameOverSounds: null,
         },
         {
             id: 11,
@@ -205,6 +215,7 @@ const CONFIG = {
             musicDuringIntro: false,
             musicIntroDelay: 0,
             musicIntroVolume: 20,
+            gameOverSounds: null,
         },
         {
             id: 12,
@@ -219,6 +230,7 @@ const CONFIG = {
             musicDuringIntro: false,
             musicIntroDelay: 0,
             musicIntroVolume: 20,
+            gameOverSounds: null,
         },
         {
             id: 13,
@@ -233,6 +245,7 @@ const CONFIG = {
             musicDuringIntro: false,
             musicIntroDelay: 0,
             musicIntroVolume: 20,
+            gameOverSounds: null,
         },
         {
             id: 14,
@@ -247,6 +260,7 @@ const CONFIG = {
             musicDuringIntro: false,
             musicIntroDelay: 0,
             musicIntroVolume: 20,
+            gameOverSounds: null,
         },
     ],
 
@@ -257,9 +271,10 @@ const CONFIG = {
     menuSounds: {
         "menu-intro":   { name: "Menu Intro",   file: "audio/sfx/menu-intro.mp3" },
         "menu-loop":    { name: "Menu Loop",     file: "audio/sfx/menu-loop.mp3", loopOverlap: 0.11},
-        "choice":       { name: "Choice",        file: "audio/sfx/choice.mp3" },
-        "confirm":      { name: "Confirm",       file: "audio/sfx/confirm.mp3" },
-        "return":       { name: "Return",        file: "audio/sfx/return.mp3" },
+        "choice":        { name: "Choice",        file: "audio/sfx/choice.mp3" },
+        "confirm":       { name: "Confirm",       file: "audio/sfx/confirm.mp3" },
+        "confirm-save":  { name: "Confirm Save",  file: "audio/sfx/confirm-save.mp3" },
+        "return":        { name: "Return",        file: "audio/sfx/return.mp3" },
     },
 
     // ============================================
@@ -272,6 +287,44 @@ const CONFIG = {
         "evasion-loop":     { name: "Evasion",                  file: "audio/sfx/evasion-loop.mp3", loopOverlap: 0.07},
         "this-way":         { name: "Da questa parte!",         file: "audio/sfx/this-way.mp3" },
         "return-to-posts":  { name: "Tornate ai vostri posti",  file: "audio/sfx/return-to-posts.mp3" },
+    },
+
+    // ============================================
+    // SUONI GAME OVER (pool globale)
+    // Ogni stage può avere gameOverSounds: ["01","03",...] per un sottoinsieme,
+    // oppure null per usare tutti.
+    // ============================================
+    gameOverSoundsPath: "audio/sfx/game-over/",
+    gameOverSounds: [
+        "01","02","03","04","05","06","07","08","09",
+        "10","11","12","13","14","15","16","17","18",
+    ],
+
+    // ============================================
+    // SCHERMATA DI SALVATAGGIO
+    // ============================================
+    saveScreen: {
+        intro: [
+            "video/Save_Intro_01.mp4",
+            "video/Save_Intro_02.mp4",
+            "video/Save_Intro_03.mp4",
+        ],
+        outro: [
+            "video/Save_Outro_01.mp4",
+            "video/Save_Outro_02.mp4",
+        ],
+        // Video progressivi se l'utente esce senza salvare (01→02→03, poi intro+silence)
+        noSaveOutro: [
+            "video/No_Save_Outro_01.mp4",
+            "video/No_Save_Outro_02.mp4",
+            "video/No_Save_Outro_03.mp4",
+        ],
+        noSaveIntro: "video/No_Save_Intro.mp4",
+        noSaveSilenceOutro: [
+            "video/No_Save_Silence_Outro_01.mp4",
+            "video/No_Save_Silence_Outro_02.mp4",
+            "video/No_Save_Silence_Outro_03.mp4",
+        ],
     },
 
     // ============================================
@@ -299,8 +352,8 @@ const CONFIG = {
         { id: "russare",    nameNormal: "Russare",                      fileNormal: "audio/sfx/Russare.mp3" },
         { id: "sbadiglio",  nameNormal: "Sbadiglio",                    fileNormal: "audio/sfx/Sbadiglio.mp3" },
         { id: "starnuto",       nameNormal: "Starnuto",         fileNormal: "audio/sfx/Starnuto.mp3" },
-        { id: "kill-silenziosa", nameNormal: "Kill silenziosa",  fileNormal: "audio/sfx/Kill-silenziosa.mp3" },
-        { id: "kill",            nameNormal: "Kill",             fileNormal: "audio/sfx/kill.mp3" },
+        { id: "kill-silenziosa", nameNormal: "Kill silenziosa",  fileNormal: "audio/sfx/Kill-silenziosa.mp3", track: "kills_silent" },
+        { id: "kill",            nameNormal: "Kill",             fileNormal: "audio/sfx/kill.mp3",            track: "kills" },
         { id: "guardia-ko",      nameNormal: "Guardia KO",       fileNormal: "audio/sfx/guardia ko.mp3" },
         { id: "guardia-colpita", nameNormal: "Guardia colpita",  fileNormal: "audio/sfx/guardia colpita.mp3" },
     ],
@@ -313,9 +366,9 @@ const CONFIG = {
         { name: "Alert Cancel",  file: "audio/sfx/alert-cancel.mp3",  icon: "~",  isAlert: false },
         { name: "Codec",         file: "audio/sfx/codec.mp3",         icon: "☎",  isAlert: false },
         { name: "Codec End",     file: "audio/sfx/codec-end.mp3",     icon: "☎",  isAlert: false },
-        { name: "Game Over",     file: "audio/sfx/game-over.mp3",     icon: "✕",  isAlert: false },
+        { name: "Game Over",     file: "audio/sfx/game-over.mp3",     icon: "✕",  isAlert: false, track: "continues" },
         { name: "Item",          file: "audio/sfx/item.mp3",          icon: "★",  isAlert: false },
-        { name: "Razione",       file: "audio/sfx/ration.mp3",        icon: "+",  isAlert: false },
+        { name: "Razione",       file: "audio/sfx/ration.mp3",        icon: "+",  isAlert: false, track: "rations_used" },
         { name: "Scoperto",      file: "audio/sfx/spotted.mp3",       icon: "?",  isAlert: false },
         { name: "Continue",      file: "audio/sfx/continue.mp3",      icon: "▶",  isAlert: false },
         { name: "Guardia KO",    file: "audio/sfx/guard-ko.mp3",      icon: "◆",  isAlert: false },
