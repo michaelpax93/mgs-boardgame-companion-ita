@@ -22,15 +22,14 @@ const CONFIG = {
     // loopOverlap: secondi di sovrapposizione per loop seamless (opzionale, default 0.05)
     // ============================================
     music: {
-        "encounter":    { name: "Encounter",                file: "audio/music/encounter.mp3" },
-        "cavern":       { name: "Cavern",                   file: "audio/music/Cavern.mp3", loopOverlap: 0.07},
-        "intruder":     { name: "Intruder",                 file: "audio/music/intruder.mp3" },
-        "duel":         { name: "Duel",                     file: "audio/music/duel.mp3" },
-        "mantis":       { name: "Mantis Hymn",              file: "audio/music/mantis-hymn.mp3" },
-        "blast":        { name: "Blast Furnace",            file: "audio/music/blast-furnace.mp3" },
-        "rex":          { name: "REX Lair",                 file: "audio/music/rex-lair.mp3" },
-        "escape":       { name: "Escape",                   file: "audio/music/escape.mp3" },
-        "best":         { name: "The Best Is Yet To Come",  file: "audio/music/best-is-yet-to-come.mp3" },
+        "introduction": { name: "Introduction",    file: "audio/music/Introduction.mp3",     introStart: 0, loopStart: 9.444, loopEnd: 20.999 },
+        "encounter":    { name: "Encounter",       file: "audio/music/Encounter.mp3",        introStart: 0, loopStart: 1.069, loopEnd: 48.312 },
+        "evasion":      { name: "Evasion",         file: "audio/music/Evasion.mp3",          introStart: 0, loopStart: 77.500, loopEnd: 127.431 },
+        "cavern":       { name: "Cavern",          file: "audio/music/Cavern.mp3",           introStart: 0, loopStart: 0.822, loopEnd: 92.806 },
+        "intruder-1":   { name: "Intruder 1",      file: "audio/music/Intruder_1.mp3",       introStart: 0, loopStart: 0.740, loopEnd: 65.880 },
+        "intruder-2":   { name: "Intruder 2",      file: "audio/music/Intruder_2.mp3",       introStart: 0, loopStart: 22.750, loopEnd: 90.830 },
+        "duel":         { name: "Duel",            file: "audio/music/Duel.mp3",             introStart: 0, loopStart: 58.400, loopEnd: 116.000 },
+        "warhead":      { name: "Warhead Storage", file: "audio/music/Warhead_Storage.mp3",  introStart: 0, loopStart: 33.850, loopEnd: 131.900 },
     },
 
     // ============================================
@@ -38,7 +37,7 @@ const CONFIG = {
     // loopOverlap: secondi di sovrapposizione per loop seamless (opzionale, default 0.05)
     // ============================================
     ambient: {
-        "arctic-wind":      { name: "Vento Artico",     file: "audio/ambient/arctic-wind.mp3" },
+        "arctic-wind":      { name: "Vento Artico",     file: "audio/ambient/arctic-wind.mp3",    introStart: 0, loopStart: 24.874, loopEnd: 109.323 },
         "machinery":        { name: "Macchinari",       file: "audio/ambient/machinery.mp3" },
         "snow":             { name: "Neve",             file: "audio/ambient/snow.mp3" },
         "base-alarm":       { name: "Allarme Base",     file: "audio/ambient/base-alarm.mp3" },
@@ -55,26 +54,26 @@ const CONFIG = {
             type: "SNEAKING MISSION",
             isBoss: false,
             description: "Infiltrazione a Shadow Moses Island",
-            intro: "video/Stage_01_Intro.mp4",
-            outro: "video/Stage_01_Outro.mp4",
+            intro: "video/stage_01_intro.mp4",
+            outro: "video/stage_01_outro.mp4",
             events: [
-                { id: "A", file: "video/Stage_01_A.mp4", stopMusic: false },
+                { id: "A", file: "video/stage_01_A.mp4", stopMusic: false },
             ],
             musicIds: ["cavern"],
             ambientIds: [],
             musicDuringIntro: true,     // true = musica parte durante intro
-            musicIntroDelay: 67000,          // secondi dall'inizio dell'intro
+            musicIntroDelay: 66000,          // secondi dall'inizio dell'intro
             musicIntroVolume: 20,        // volume 0-100 durante l'intro
             gameOverSounds: ["02", "03", "04", "05"],
         },
         {
             id: 2,
-            name: "Heliport",
+            name: "ELIPORTO",
             type: "SNEAKING MISSION",
             isBoss: false,
             description: "Attraversamento dell'eliporto",
-            intro: "video/Stage_02_Intro.mp4",
-            outro: "video/Stage_02_Outro.mp4",
+            intro: "video/stage_02_intro.mp4",
+            outro: "video/stage_02_outro.mp4",
             musicIds: [],
             ambientIds: ["arctic-wind"],
             musicDuringIntro: false,
@@ -84,42 +83,47 @@ const CONFIG = {
         },
         {
             id: 3,
-            name: "Holding Cells",
+            name: "CELLE DI DETENZIONE",
             type: "SNEAKING MISSION",
             isBoss: false,
             description: "Salvataggio del presidente della DARPA",
-            intro: "",
-            outro: "",
-            musicIds: [],
+            intro: "video/stage_03_intro.mp4",
+            outro: "video/stage_03_outro.mp4",
+			events: [
+                { id: "A", file: "video/stage_03_A.mp4", stopMusic: true },
+				{ id: "B", file: "video/stage_03_B.mp4", stopMusic: true },
+            ],
+            musicIds: ["intruder-1", "intruder-2"],
             ambientIds: [],
+            startInAlert: true,
             musicDuringIntro: false,
             musicIntroDelay: 0,
             musicIntroVolume: 20,
-            gameOverSounds: null,
+            gameOverSounds: ["02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"],
         },
         {
             id: 4,
-            name: "Revolver Ocelot",
+            name: "REVOLVER OCELOT",
             type: "BOSS BATTLE",
             isBoss: true,
             description: "Scontro con Revolver Ocelot",
             intro: "",
-            outro: "",
+            outro: "video/stage_04_outro.mp4",
             musicIds: ["duel"],
             ambientIds: [],
             musicDuringIntro: false,
             musicIntroDelay: 0,
             musicIntroVolume: 20,
-            gameOverSounds: null,
+            gameOverSounds: ["14"],
         },
         {
             id: 5,
-            name: "Tank Ambush",
+            name: "IMBOSCATA DEL CARRO ARMATO",
             type: "BOSS BATTLE",
             isBoss: true,
             description: "Imboscata del carro armato M1",
-            intro: "",
-            outro: "",
+            intro: "video/stage_05_intro.mp4",
+            outro: "video/stage_05_outro.mp4",
             musicIds: ["duel"],
             ambientIds: [],
             musicDuringIntro: false,
@@ -133,7 +137,7 @@ const CONFIG = {
             type: "SNEAKING MISSION",
             isBoss: false,
             description: "Infiltrazione nel deposito testate nucleari",
-            intro: "",
+            intro: "video/stage_06_intro.mp4",
             outro: "",
             musicIds: [],
             ambientIds: [],
@@ -269,8 +273,6 @@ const CONFIG = {
     // loopOverlap: secondi di sovrapposizione per loop seamless (opzionale, default 0.05)
     // ============================================
     menuSounds: {
-        "menu-intro":   { name: "Menu Intro",   file: "audio/sfx/menu-intro.mp3" },
-        "menu-loop":    { name: "Menu Loop",     file: "audio/sfx/menu-loop.mp3", loopOverlap: 0.11},
         "choice":        { name: "Choice",        file: "audio/sfx/choice.mp3" },
         "confirm":       { name: "Confirm",       file: "audio/sfx/confirm.mp3" },
         "confirm-save":  { name: "Confirm Save",  file: "audio/sfx/confirm-save.mp3" },
@@ -283,8 +285,6 @@ const CONFIG = {
     // ============================================
     alertSounds: {
         "discovery":        { name: "Eccolo!",                  file: "audio/sfx/discovery.mp3" },
-        "alert-loop":       { name: "Alert",                    file: "audio/sfx/alert-loop.mp3", loopOverlap: 0.10},
-        "evasion-loop":     { name: "Evasion",                  file: "audio/sfx/evasion-loop.mp3", loopOverlap: 0.07},
         "this-way":         { name: "Da questa parte!",         file: "audio/sfx/this-way.mp3" },
         "return-to-posts":  { name: "Tornate ai vostri posti",  file: "audio/sfx/return-to-posts.mp3" },
     },

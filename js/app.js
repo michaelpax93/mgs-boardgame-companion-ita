@@ -19,15 +19,10 @@ const App = {
     alertLoop: null,
     evasionLoop: null,
     menuMusicLoop: null,
-    menuIntroAudio: null,
-    menuIntroRafId: null,
 
     // Web Audio API
     _audioCtx: null,
     _bufferCache: {},
-    _menuGain: null,
-    _menuIntroSource: null,
-    _menuLoopSource: null,
 
     // Alert system
     alertState: 'normal',
@@ -43,6 +38,10 @@ const App = {
     _saveVideoEnding: false,
     // Contatore chiamate Mei Ling senza salvare (reset a 0 quando si salva)
     _noSaveCount: 0,
+    // Flag: salvataggio avvenuto nella visita corrente alla schermata save
+    _savedThisVisit: false,
+    // Volumi salvati prima del ducking video (null = nessun duck attivo)
+    _duckVolumes: null,
 
     // Save system
     session: null,
@@ -100,7 +99,12 @@ const App = {
     // Prova Web Audio API (AudioBufferSourceNode.loop = true, zero gap).
     // Se WA non è pronto o fetch fallisce, usa il fallback dual-buffer new Audio().
     // ============================================
-    createSeamlessLoop(file, volume, overlapOverride) {
+    _cfgLoopPoints(cfg) {
+        return (cfg.loopStart != null || cfg.loopEnd != null)
+            ? { introStart: cfg.introStart ?? null, start: cfg.loopStart ?? 0, end: cfg.loopEnd ?? 0 } : null;
+    },
+
+    createSeamlessLoop(file, volume, overlapOverride, loopPoints) {
         const ctx = this._audioCtx;
 
         if (ctx) {
@@ -130,8 +134,15 @@ const App = {
                         source = ctx.createBufferSource();
                         source.buffer = buffer;
                         source.loop = true;
+                        if (loopPoints) {
+                            source.loopStart = loopPoints.start ?? 0;
+                            source.loopEnd   = loopPoints.end   ?? 0;
+                        }
                         source.connect(gainNode);
-                        source.start(0);
+                        const startOffset = loopPoints
+                            ? (loopPoints.introStart ?? loopPoints.start ?? 0)
+                            : 0;
+                        source.start(0, startOffset);
                     }).catch(e => {
                         console.warn('WA loop fallback:', file, e.message);
                         fallbackToLegacy();
@@ -315,51 +326,15 @@ const App = {
     startMenuMusic() {
         this.stopMenuMusic();
         this._initAudioCtx();
-        const sounds = CONFIG.menuSounds;
-        const OVERLAP = 0.15;
-
-        // menu-intro: new Audio() garantito, non dipende da fetch/WA
-        this.menuIntroAudio = new Audio(sounds['menu-intro'].file);
-        this.menuIntroAudio.volume = 0.35;
-        this.menuIntroAudio.play().catch(e => console.warn(e.message));
-
-        // menu-loop: pre-carica subito il buffer WA (se disponibile) mentre l'intro suona,
-        // così quando play() viene chiamato il buffer è già in cache → nessun ritardo
-        const loopCfg = sounds['menu-loop'];
-        if (this._audioCtx) this._loadBuffer(loopCfg.file).catch(() => {});
-        this.menuMusicLoop = this.createSeamlessLoop(loopCfg.file, 0.35, loopCfg.loopOverlap);
-
-        let loopStarted = false;
-
-        // Fallback ended: garantisce che il loop parta anche se RAF è throttlato
-        this.menuIntroAudio.addEventListener('ended', () => {
-            if (this.menuIntroRafId) { cancelAnimationFrame(this.menuIntroRafId); this.menuIntroRafId = null; }
-            this.menuIntroAudio = null;
-            if (!loopStarted) { loopStarted = true; this.menuMusicLoop.play(); }
-        }, { once: true });
-
-        // RAF: avvia il loop OVERLAP secondi prima della fine per transizione seamless
-        const checkEnd = () => {
-            if (!this.menuIntroAudio) return;
-            const audio = this.menuIntroAudio;
-            const remaining = audio.duration - audio.currentTime;
-            if (!isNaN(audio.duration) && remaining > 0 && remaining <= OVERLAP) {
-                loopStarted = true;
-                this.menuMusicLoop.play();
-                return;
-            }
-            this.menuIntroRafId = requestAnimationFrame(checkEnd);
-        };
-        this.menuIntroRafId = requestAnimationFrame(checkEnd);
+        const cfg = CONFIG.music['introduction'];
+        if (!cfg) return;
+        if (this._audioCtx) this._loadBuffer(cfg.file).catch(() => {});
+        this.menuMusicLoop = this.createSeamlessLoop(cfg.file, 0.35, cfg.loopOverlap, this._cfgLoopPoints(cfg));
+        this.menuMusicLoop.play();
     },
 
     stopMenuMusic() {
-        if (this.menuIntroRafId) { cancelAnimationFrame(this.menuIntroRafId); this.menuIntroRafId = null; }
-        if (this.menuIntroAudio) { this.menuIntroAudio.pause(); this.menuIntroAudio = null; }
         if (this.menuMusicLoop) { this.menuMusicLoop.stop(); this.menuMusicLoop = null; }
-        if (this._menuIntroSource) { try { this._menuIntroSource.stop(0); } catch(e) {} this._menuIntroSource = null; }
-        if (this._menuLoopSource) { try { this._menuLoopSource.stop(0); } catch(e) {} this._menuLoopSource = null; }
-        if (this._menuGain) { this._menuGain.disconnect(); this._menuGain = null; }
     },
 
     updateMenuWheel() {
@@ -646,9 +621,32 @@ const App = {
         if (this.currentVideoBtn) this.currentVideoBtn.classList.add('playing');
     },
 
+    _duckAudio() {
+        const DUCK = 0.15;
+        this._duckVolumes = {};
+        const loops = { musicLoop: this.musicLoop, ambientLoop: this.ambientLoop, alertLoop: this.alertLoop, evasionLoop: this.evasionLoop };
+        for (const [key, loop] of Object.entries(loops)) {
+            if (loop && loop.isPlaying()) {
+                this._duckVolumes[key] = loop.getVolume();
+                loop.setVolume(this._duckVolumes[key] * DUCK);
+            }
+        }
+    },
+
+    _unduckAudio() {
+        if (!this._duckVolumes) return;
+        const loops = { musicLoop: this.musicLoop, ambientLoop: this.ambientLoop, alertLoop: this.alertLoop, evasionLoop: this.evasionLoop };
+        for (const [key, vol] of Object.entries(this._duckVolumes)) {
+            const loop = loops[key];
+            if (loop && loop.isPlaying()) loop.setVolume(vol);
+        }
+        this._duckVolumes = null;
+    },
+
     playVideo(src) {
         if (!src || src.length === 0) return;
 
+        this._duckAudio();
         const wrapper = document.getElementById('video-wrapper');
         const player = document.getElementById('video-player');
         const placeholder = document.getElementById('video-placeholder');
@@ -696,7 +694,9 @@ const App = {
             this.musicIntroTimer = null;
         }
         if (!this.ambientLoop || !this.ambientLoop.isPlaying()) this.playFirstAmbient();
-        if (this.musicLoop && this.musicLoop.isPlaying()) {
+        if (this.currentStage && this.currentStage.startInAlert) {
+            this.triggerAlert();
+        } else if (this.musicLoop && this.musicLoop.isPlaying()) {
             this.fadeMusicToNormalVolume();
         } else if (!this.musicLoop || !this.musicLoop.isPlaying()) {
             this.playFirstMusic();
@@ -804,6 +804,7 @@ const App = {
         this._initAudioCtx(); // precarica buffer suoni menu per risposta immediata
         this.cardScreenMode = 'save';
         this.cardReturnScreen = 'stage-active';
+        this._savedThisVisit = false;
         this.pendingNextStageId = null;
         this.selectedCard = 1;
         this.selectedBlock = null;
@@ -843,6 +844,7 @@ const App = {
         if (stopBtn) stopBtn.style.display = 'none';
         if (wrapper) wrapper.style.display = 'none';
         document.getElementById('stage-active')?.classList.remove('stage-video-active');
+        this._unduckAudio();
     },
 
     // ============================================
@@ -872,7 +874,7 @@ const App = {
         if (!track) return;
         this.stopMusic();
         this.lastMusicId = id;
-        this.musicLoop = this.createSeamlessLoop(track.file, volume, track.loopOverlap);
+        this.musicLoop = this.createSeamlessLoop(track.file, volume, track.loopOverlap, this._cfgLoopPoints(track));
         this.musicLoop.play();
         const controls = document.getElementById('music-controls');
         if (controls) controls.style.display = '';
@@ -910,8 +912,11 @@ const App = {
     stopMusic() {
         if (this.musicLoop) { this.musicLoop.stop(); this.musicLoop = null; }
         if (this.currentMusicBtn) { this.currentMusicBtn.classList.remove('playing'); this.currentMusicBtn = null; }
-        const controls = document.getElementById('music-controls');
-        if (controls) controls.style.display = 'none';
+        // Differisce il layout shift al frame successivo per evitare ghost click
+        requestAnimationFrame(() => {
+            const controls = document.getElementById('music-controls');
+            if (controls) controls.style.display = 'none';
+        });
     },
 
     // ============================================
@@ -921,8 +926,16 @@ const App = {
         const container = document.getElementById('alert-section');
         if (!container) return;
 
+        const meiLingVisible = stage.id >= 2;
+        const meiLingBtn = `<div id="mei-ling-btn-wrapper" style="display:${meiLingVisible ? '' : 'none'}; margin-left:auto">
+                <button class="btn-codec btn-small btn-mei-ling" id="btn-mei-ling" onclick="App.openMeiLing()">
+                    <span class="btn-inner">MEI LING</span>
+                </button>
+            </div>`;
+
         if (stage.isBoss) {
             container.innerHTML = '<div class="no-audio-msg">Alert disabilitato nelle boss fight</div>';
+            container.insertAdjacentHTML('beforeend', meiLingBtn);
             return;
         }
 
@@ -937,14 +950,7 @@ const App = {
                 <span class="sfx-icon">✓</span> Tornate ai vostri posti
             </button>
         `;
-        // Bottone MEI LING: tutto a destra, visibile dal 2° stage in poi
-        const meiLingVisible = stage.id >= 2;
-        container.insertAdjacentHTML('beforeend',
-            `<div id="mei-ling-btn-wrapper" style="display:${meiLingVisible ? '' : 'none'}; margin-left:auto">
-                <button class="btn-codec btn-small btn-mei-ling" id="btn-mei-ling" onclick="App.openMeiLing()">
-                    <span class="btn-inner">MEI LING</span>
-                </button>
-            </div>`);
+        container.insertAdjacentHTML('beforeend', meiLingBtn);
     },
 
     buildGuardSection(stage) {
@@ -987,12 +993,9 @@ const App = {
             this.discoveryAudio.volume = 0.8;
             this.discoveryAudio.play().catch(e => console.warn(e.message));
 
-            const alertCfg = sounds['alert-loop'];
-            this.alertLoop = this.createSeamlessLoop(alertCfg.file, 0.8, alertCfg.loopOverlap);
-
-            setTimeout(() => {
-                this.alertLoop.play();
-            }, 1000);
+            const alertCfg = CONFIG.music['encounter'];
+            this.alertLoop = this.createSeamlessLoop(alertCfg.file, 0.8, alertCfg.loopOverlap, this._cfgLoopPoints(alertCfg));
+            this.alertLoop.play();
 
             this.alertState = 'alert';
             this.updateAlertButtons();
@@ -1019,8 +1022,8 @@ const App = {
         // Create evasionLoop fresh at target volume — avoids race condition
         // where a silent pre-created loop may not be playing yet
         if (this.evasionLoop) { this.evasionLoop.stop(); this.evasionLoop = null; }
-        const evasionCfg = CONFIG.alertSounds['evasion-loop'];
-        this.evasionLoop = this.createSeamlessLoop(evasionCfg.file, 0.8, evasionCfg.loopOverlap);
+        const evasionCfg = CONFIG.music['evasion'];
+        this.evasionLoop = this.createSeamlessLoop(evasionCfg.file, 0.8, evasionCfg.loopOverlap, this._cfgLoopPoints(evasionCfg));
         this.evasionLoop.play();
 
         // Fade out alertLoop (keep it alive for potential alert→evasion→alert crossfade)
@@ -1150,7 +1153,7 @@ const App = {
         if (!amb) return;
         this.stopAmbient();
         const vol = (document.getElementById('ambient-volume')?.value || 30) / 100;
-        this.ambientLoop = this.createSeamlessLoop(amb.file, vol, amb.loopOverlap);
+        this.ambientLoop = this.createSeamlessLoop(amb.file, vol, amb.loopOverlap, this._cfgLoopPoints(amb));
         this.ambientLoop.play();
         const controls = document.getElementById('ambient-controls');
         if (controls) controls.style.display = '';
@@ -1319,8 +1322,7 @@ const App = {
         // ESC to go back
         if (e.key === 'Escape') {
             if (this.currentScreen === 'stage-active') {
-                this.stopAllAudio();
-                this.showScreen('stage-select');
+                // noop
             } else if (this.currentScreen === 'stage-select' || this.currentScreen === 'briefing-screen' || this.currentScreen === 'vr-screen') {
                 if (this.currentScreen === 'briefing-screen') this.stopBriefing();
                 this.stopAllAudio();
@@ -1593,10 +1595,17 @@ const App = {
                 const confirmArea = document.getElementById('block-confirm-area');
                 if (confirmArea) { confirmArea.innerHTML = ''; confirmArea.style.display = 'none'; }
             } else {
-                // Fase card → esci con No_Save outro
+                // Fase card → esci
                 this.stopSaveVideo();
                 this.playSfx(CONFIG.menuSounds['return'].file);
-                this._playNotSaveOutro();
+                if (this._savedThisVisit) {
+                    // Ha già salvato in questa visita: torna senza rimproverare
+                    this._savedThisVisit = false;
+                    this.cardReturnScreen = 'main-menu';
+                    this.showScreen('stage-active');
+                } else {
+                    this._playNotSaveOutro();
+                }
             }
             return;
         }
@@ -1833,7 +1842,8 @@ const App = {
 
     _doSave(blockId) {
         this.playSfx(CONFIG.menuSounds['confirm-save'].file);
-        this._noSaveCount = 0; // Reset contatore "non hai salvato"
+        this._noSaveCount = 0;
+        this._savedThisVisit = true;
         this.saveToBlock(this.selectedCard, blockId);
         const confirmArea = document.getElementById('block-confirm-area');
         if (confirmArea) { confirmArea.style.display = 'none'; confirmArea.innerHTML = ''; }
