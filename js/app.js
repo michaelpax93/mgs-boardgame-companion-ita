@@ -119,7 +119,7 @@ const App = {
             // Se WA fallisce (fetch error, decode error), passa al dual-buffer legacy
             const fallbackToLegacy = () => {
                 gainNode.disconnect();
-                legacy = App._loopLegacy(file, currentVolume, overlapOverride);
+                legacy = App._loopLegacy(file, currentVolume, overlapOverride, loopPoints);
                 if (active) legacy.play();
             };
 
@@ -164,12 +164,15 @@ const App = {
             };
         }
 
-        return this._loopLegacy(file, volume, overlapOverride);
+        return this._loopLegacy(file, volume, overlapOverride, loopPoints);
     },
 
-    _loopLegacy(file, volume, overlapOverride) {
+    _loopLegacy(file, volume, overlapOverride, loopPoints) {
         const self = this;
         const overlap = (overlapOverride !== undefined) ? overlapOverride : self.LOOP_OVERLAP;
+        const loopStart   = loopPoints ? (loopPoints.start       ?? 0)    : 0;
+        const loopEnd     = loopPoints ? (loopPoints.end         ?? null)  : null;
+        const introStart  = loopPoints ? (loopPoints.introStart  ?? loopStart) : 0;
         const loop = {
             file, volume,
             audioA: new Audio(file),
@@ -183,9 +186,10 @@ const App = {
 
         const switchToNext = (current, next) => {
             if (!loop.active) return;
-            next.currentTime = 0;
+            next.currentTime = loopStart;
             next.volume = loop.volume;
             next.play().catch(e => console.warn(e.message));
+            if (loopEnd != null) current.pause();
             loop.current = loop.current === 'A' ? 'B' : 'A';
             scheduleNext();
         };
@@ -206,7 +210,8 @@ const App = {
 
             const check = () => {
                 if (!loop.active) return;
-                const remaining = current.duration - current.currentTime;
+                const endPoint  = (loopEnd != null) ? loopEnd : current.duration;
+                const remaining = endPoint - current.currentTime;
                 if (!isNaN(current.duration) && remaining > 0 && remaining <= overlap) {
                     if (fired) return;
                     fired = true;
@@ -222,7 +227,7 @@ const App = {
         return {
             play() {
                 loop.active = true;
-                loop.audioA.currentTime = 0;
+                loop.audioA.currentTime = introStart;
                 loop.audioA.volume = loop.volume;
                 loop.audioA.play().then(() => { loop.current = 'A'; scheduleNext(); }).catch(e => console.warn(e.message));
             },
@@ -607,7 +612,11 @@ const App = {
         } else {
             setTimeout(() => {
                 this.playFirstAmbient();
-                this.playFirstMusic();
+                if (stage.startInAlert) {
+                    this.triggerAlert();
+                } else {
+                    this.playFirstMusic();
+                }
             }, 300);
         }
     },
@@ -863,10 +872,11 @@ const App = {
         }
 
         if (category) category.style.display = '';
+        const disabledClass = stage.startInAlert ? ' btn-disabled' : '';
         container.innerHTML = ids.map(id => {
             const track = CONFIG.music[id];
             if (!track) return '';
-            return `<button class="btn-sound" id="music-btn-${id}" onclick="App.playMusic('${id}')">♪ ${track.name}</button>`;
+            return `<button class="btn-sound${disabledClass}" id="music-btn-${id}" onclick="App.playMusic('${id}')">♪ ${track.name}</button>`;
         }).join('');
     },
 
@@ -885,7 +895,21 @@ const App = {
 
     playMusic(id) {
         const normalVolume = (document.getElementById('music-volume')?.value || 50) / 100;
-        this.playMusicAtVolume(id, normalVolume);
+        const stage = this.currentStage;
+        const isSwitching = this.musicLoop && this.musicLoop.isPlaying();
+        if (isSwitching && stage && stage.elevator) {
+            this.stopMusic();
+            const stageEl = document.getElementById('stage-active');
+            if (stageEl) stageEl.classList.add('stage-elevator-active');
+            const sfx = new Audio(stage.elevator);
+            sfx.play().catch(e => console.warn(e.message));
+            sfx.addEventListener('ended', () => {
+                if (stageEl) stageEl.classList.remove('stage-elevator-active');
+                this.playMusicAtVolume(id, normalVolume);
+            });
+        } else {
+            this.playMusicAtVolume(id, normalVolume);
+        }
     },
 
     fadeMusicToNormalVolume() {
@@ -915,6 +939,7 @@ const App = {
         if (this.currentMusicBtn) { this.currentMusicBtn.classList.remove('playing'); this.currentMusicBtn = null; }
         // Differisce il layout shift al frame successivo per evitare ghost click
         requestAnimationFrame(() => {
+            if (this.musicLoop) return;
             const controls = document.getElementById('music-controls');
             if (controls) controls.style.display = 'none';
         });
@@ -950,6 +975,9 @@ const App = {
             <button class="btn-sound btn-return" id="btn-return" onclick="App.triggerReturn()" disabled style="opacity:0.3">
                 <span class="sfx-icon">✓</span> Tornate ai vostri posti
             </button>
+            <div class="music-controls" id="alert-controls" style="display:none">
+                <input type="range" id="alert-volume" class="volume-slider" min="0" max="100" value="80" oninput="App.setAlertVolume(this.value)">
+            </div>
         `;
         container.insertAdjacentHTML('beforeend', meiLingBtn);
     },
@@ -1054,7 +1082,14 @@ const App = {
         returnAudio.volume = 0.8;
         returnAudio.play().catch(e => console.warn(e.message));
         returnAudio.addEventListener('ended', () => {
-            if (this.lastMusicId) this.playMusic(this.lastMusicId);
+            if (this.lastMusicId) {
+                this.playMusic(this.lastMusicId);
+            } else {
+                this.playFirstMusic();
+            }
+            if (!this.ambientLoop || !this.ambientLoop.isPlaying()) {
+                this.playFirstAmbient();
+            }
         });
 
         this.alertState = 'normal';
@@ -1067,24 +1102,43 @@ const App = {
         const btnReturn = document.getElementById('btn-return');
         if (!btnAlert || !btnEvasion || !btnReturn) return;
 
+        const isAlert = this.alertState !== 'normal';
+        document.querySelectorAll('#music-buttons .btn-sound, #ambient-buttons .btn-sound').forEach(btn => {
+            btn.classList.toggle('btn-disabled', isAlert);
+        });
+
+        const alertControls = document.getElementById('alert-controls');
+
         switch (this.alertState) {
             case 'normal':
                 btnAlert.disabled = false; btnAlert.style.opacity = '1'; btnAlert.classList.remove('playing');
                 btnEvasion.disabled = true; btnEvasion.style.opacity = '0.3'; btnEvasion.classList.remove('playing');
                 btnReturn.disabled = true; btnReturn.style.opacity = '0.3';
+                if (alertControls) alertControls.style.display = 'none';
                 break;
             case 'alert':
                 btnAlert.disabled = false; btnAlert.style.opacity = '1'; btnAlert.classList.add('playing');
                 btnEvasion.disabled = false; btnEvasion.style.opacity = '1'; btnEvasion.classList.remove('playing');
                 btnReturn.disabled = true; btnReturn.style.opacity = '0.3';
+                if (alertControls) alertControls.style.display = '';
                 break;
             case 'evasion':
                 btnAlert.disabled = false; btnAlert.style.opacity = '1'; btnAlert.classList.remove('playing');
                 btnEvasion.disabled = false; btnEvasion.style.opacity = '1'; btnEvasion.classList.add('playing');
                 btnReturn.disabled = false; btnReturn.style.opacity = '1';
+                if (alertControls) alertControls.style.display = '';
                 break;
         }
         this.updateGuardButtons();
+    },
+
+    setAlertVolume(val) {
+        const vol = val / 100;
+        if (this.alertState === 'evasion' && this.evasionLoop) {
+            this.evasionLoop.setVolume(vol);
+        } else if (this.alertLoop) {
+            this.alertLoop.setVolume(vol);
+        }
     },
 
     crossfadeLoops(fadeOutLoop, fadeInLoop) {
@@ -1127,10 +1181,11 @@ const App = {
             return;
         }
         if (category) category.style.display = '';
+        const disabledClass = stage.startInAlert ? ' btn-disabled' : '';
         container.innerHTML = ids.map(id => {
             const amb = CONFIG.ambient[id];
             if (!amb) return '';
-            return `<button class="btn-sound" id="ambient-btn-${id}" onclick="App.playAmbient('${id}')">◊ ${amb.name}</button>`;
+            return `<button class="btn-sound${disabledClass}" id="ambient-btn-${id}" onclick="App.playAmbient('${id}')">◊ ${amb.name}</button>`;
         }).join('');
     },
 

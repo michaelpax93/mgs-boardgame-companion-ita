@@ -304,6 +304,16 @@ body {
     opacity: 1 !important;
 }
 
+/* Blocco UI durante transizione elevator */
+#stage-active.stage-elevator-active button {
+    pointer-events: none !important;
+    opacity: 0.25 !important;
+}
+#stage-active.stage-elevator-active input[type="range"] {
+    pointer-events: none !important;
+    opacity: 0.25 !important;
+}
+
 .btn-back {
     background: none;
     border: none;
