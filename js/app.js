@@ -844,6 +844,7 @@ const App = {
         if (stopBtn) stopBtn.style.display = 'none';
         if (wrapper) wrapper.style.display = 'none';
         document.getElementById('stage-active')?.classList.remove('stage-video-active');
+        document.getElementById('stage-active')?.scrollTo({ top: 0, behavior: 'smooth' });
         this._unduckAudio();
     },
 
