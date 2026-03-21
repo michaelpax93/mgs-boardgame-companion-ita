@@ -67,7 +67,19 @@
             </div>
         </div>
         <div class="briefing-video-container">
-            <video id="briefing-video" controls></video>
+            <video id="briefing-video"></video>
+        </div>
+    </div>
+
+    <!-- DIFFICULTY SELECT SCREEN -->
+    <div id="difficulty-screen" class="screen">
+        <div class="menu-bg">
+            <div class="difficulty-circuit-bg"></div>
+            <div class="difficulty-container">
+                <div class="difficulty-title-box">SELECT GAME LEVEL</div>
+                <div class="difficulty-list" id="difficulty-list"></div>
+                <div class="difficulty-caption" id="difficulty-caption"></div>
+            </div>
         </div>
     </div>
 
@@ -128,6 +140,78 @@
             </div>
         </div>
 
+        <!-- Players Popup (mostrato quando si avanza al prossimo stage) -->
+        <div id="players-popup" class="players-popup-overlay" style="display:none">
+            <div class="players-popup-box">
+                <div class="players-popup-stage-id" id="players-popup-stage-id">STAGE 02</div>
+                <div class="players-popup-stage-name" id="players-popup-stage-name">ELIPORTO</div>
+                <div class="players-popup-type" id="players-popup-type">SNEAKING MISSION</div>
+                <div class="players-popup-divider"></div>
+                <div class="players-popup-label">OPERATORI MISSIONE</div>
+                <div class="players-popup-list" id="players-popup-list"></div>
+                <button class="btn-codec players-popup-start-btn" onclick="App.startStageFromPopup()">
+                    <span class="btn-inner">▶ INIZIA MISSIONE</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Equipment Selection Popup -->
+        <div id="equipment-popup" class="equipment-popup-overlay" style="display:none">
+            <div class="equipment-popup-box">
+                <div class="equipment-popup-title">EQUIPAGGIAMENTO</div>
+                <div class="equipment-popup-subtitle">Scegli l'equipaggiamento per questa missione</div>
+                <div id="equipment-popup-content" class="equipment-popup-content"></div>
+                <button class="btn-codec equipment-confirm-btn" onclick="App.confirmEquipmentPopup()">
+                    <span class="btn-inner">▶ INIZIA MISSIONE</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Rewards Popup -->
+        <div id="rewards-popup" class="rewards-popup-overlay" style="display:none">
+            <div class="rewards-popup-box">
+                <div class="rewards-popup-header-label">MISSIONE COMPLETATA</div>
+                <div class="rewards-popup-stage-name" id="rewards-popup-stage"></div>
+                <div class="rewards-popup-divider"></div>
+                <div class="rewards-popup-section-label">EQUIPAGGIAMENTO SBLOCCATO</div>
+                <div id="rewards-always-list" class="rewards-equipment-list"></div>
+                <div id="rewards-conditional-section"></div>
+                <button class="btn-codec rewards-confirm-btn" onclick="App._rewardsConfirm()">
+                    <span class="btn-inner">▶ PROCEDI</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Noise Reminder Popup -->
+        <div id="noise-reminder-popup" class="enemy-phase-popup-overlay" style="display:none">
+            <div class="enemy-phase-popup-box">
+                <div class="enemy-phase-popup-icon">🔊</div>
+                <div class="enemy-phase-popup-text">
+                    CONTROLLO RUMORE<br>
+                    <span id="noise-reminder-player" style="font-size:0.75rem;opacity:0.7"></span>
+                </div>
+                <div style="font-family:var(--font-mono);font-size:0.85rem;color:var(--text-bright);text-align:center;line-height:1.6">
+                    Lancia <strong id="noise-reminder-count">0</strong>
+                    <span id="noise-reminder-dado">dadi bianchi</span><br>
+                    <span style="font-size:0.7rem;color:var(--text-dim)">Se esce ! colloca il segnalino ? / ! sotto la miniatura</span>
+                </div>
+                <button class="btn-codec enemy-phase-confirm-btn" onclick="App.noiseReminderConfirm()">
+                    <span class="btn-inner">▶ OK</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Enemy Phase Popup -->
+        <div id="enemy-phase-popup" class="enemy-phase-popup-overlay" style="display:none">
+            <div class="enemy-phase-popup-box">
+                <div class="enemy-phase-popup-icon">!</div>
+                <div class="enemy-phase-popup-text">PASSARE ALLA<br>FASE DEI NEMICI?</div>
+                <button class="btn-codec enemy-phase-confirm-btn" onclick="App.confirmEnemyPhase()">
+                    <span class="btn-inner">▶ OK</span>
+                </button>
+            </div>
+        </div>
+
         <!-- Video Section -->
         <div class="video-section" id="video-section">
             <div class="video-wrapper" id="video-wrapper">
@@ -135,7 +219,8 @@
                     <div class="placeholder-icon">▶</div>
                     <div class="placeholder-text">SELEZIONA INTRO O OUTRO</div>
                 </div>
-                <video id="video-player" controls style="display:none"></video>
+                <video id="video-player" style="display:none"></video>
+                <video id="video-player-b" style="display:none"></video>
             </div>
             <div class="video-controls">
                 <button class="btn-codec btn-video" id="btn-intro" onclick="App.playIntro()">
@@ -148,6 +233,16 @@
                 <button class="btn-codec btn-video btn-stop" id="btn-stop-video" onclick="App.stopVideo()" style="display:none">
                     <span class="btn-inner">■ STOP</span>
                 </button>
+            </div>
+        </div>
+
+        <!-- Turn Management Section -->
+        <div class="turn-section" id="turn-section">
+            <div class="section-title">
+                <span class="section-icon">◈</span> TURNI
+            </div>
+            <div class="turn-content" id="turn-content">
+                <!-- Generated by JS -->
             </div>
         </div>
 
@@ -164,22 +259,8 @@
                     <!-- Generated by JS -->
                 </div>
                 <div class="music-controls" id="music-controls" style="display:none">
-                    <input type="range" id="music-volume" class="volume-slider" min="0" max="100" value="50" oninput="App.setMusicVolume(this.value)">
+                    <input type="range" id="music-volume" class="volume-slider" min="0" max="100" value="15" oninput="App.setMusicVolume(this.value)">
                     <button class="btn-codec btn-small" onclick="App.stopMusic()">
-                        <span class="btn-inner">■ STOP</span>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Ambient -->
-            <div class="sound-category" id="ambient-category">
-                <div class="category-title">AMBIENTE</div>
-                <div class="sound-buttons" id="ambient-buttons">
-                    <!-- Generated by JS -->
-                </div>
-                <div class="music-controls" id="ambient-controls" style="display:none">
-                    <input type="range" id="ambient-volume" class="volume-slider" min="0" max="100" value="30" oninput="App.setAmbientVolume(this.value)">
-                    <button class="btn-codec btn-small" onclick="App.stopAmbient()">
                         <span class="btn-inner">■ STOP</span>
                     </button>
                 </div>
@@ -196,25 +277,6 @@
                 </div>
             </div>
 
-            <!-- Guard Sounds (sneaking mission only) -->
-            <div class="sound-category" id="guard-category">
-                <div class="category-title">GUARDIE</div>
-                <div class="sound-buttons">
-                    <!-- Generated by JS (labels cambiano con lo stato alert) -->
-                    <button class="btn-sound" id="guard-btn-cosa-e-stato" onclick="App.playGuardSound('cosa-e-stato')"></button>
-                    <button class="btn-sound" id="guard-btn-sembrava-qualcuno" onclick="App.playGuardSound('sembrava-qualcuno')"></button>
-                    <button class="btn-sound" id="guard-btn-impronte" onclick="App.playGuardSound('impronte')"></button>
-                    <button class="btn-sound" id="guard-btn-scatolone" onclick="App.playGuardSound('scatolone')"></button>
-                    <button class="btn-sound" id="guard-btn-fuori" onclick="App.playGuardSound('fuori')"></button>
-                    <button class="btn-sound" id="guard-btn-russare" onclick="App.playGuardSound('russare')"></button>
-                    <button class="btn-sound" id="guard-btn-sbadiglio" onclick="App.playGuardSound('sbadiglio')"></button>
-                    <button class="btn-sound" id="guard-btn-starnuto" onclick="App.playGuardSound('starnuto')"></button>
-                    <button class="btn-sound" id="guard-btn-kill-silenziosa" onclick="App.playGuardSound('kill-silenziosa')"></button>
-                    <button class="btn-sound" id="guard-btn-kill" onclick="App.playGuardSound('kill')"></button>
-                    <button class="btn-sound" id="guard-btn-guardia-ko" onclick="App.playGuardSound('guardia-ko')"></button>
-                    <button class="btn-sound" id="guard-btn-guardia-colpita" onclick="App.playGuardSound('guardia-colpita')"></button>
-                </div>
-            </div>
 
         </div>
     </div>
@@ -240,7 +302,7 @@
                     <div class="placeholder-icon">▶</div>
                     <div class="placeholder-text">SALVATAGGIO IN CORSO</div>
                 </div>
-                <video id="save-video-player" controls style="display:none"></video>
+                <video id="save-video-player" style="display:none"></video>
             </div>
             <div class="video-controls">
                 <button class="btn-codec btn-video" id="save-btn-intro" onclick="App.playSaveIntro()">
@@ -286,7 +348,37 @@
 
     <!-- AUDIO ELEMENTS (created dynamically by JS) -->
 
+    <!-- Popup causa alert -->
+    <div id="alert-cause-popup" class="alert-cause-overlay" style="display:none">
+        <div class="alert-cause-box">
+            <div class="alert-cause-title">! CAUSA ALERT</div>
+            <div id="alert-cause-options"></div>
+        </div>
+    </div>
+
+    <!-- Sidebar personaggi — sinistra (visibile durante stage-active) -->
+    <div id="player-sidebar" class="player-sidebar" style="display:none"></div>
+
+    <!-- Sidebar equipaggiamento — destra (visibile durante il turno del giocatore attivo) -->
+    <div id="equipment-sidebar" class="equipment-sidebar" style="display:none"></div>
+
+    <!-- Popup risultato attacco -->\
+    <div id="attack-result-popup" class="attack-result-overlay" style="display:none">
+        <div class="attack-result-box">
+            <div class="attack-result-title" id="attack-result-title">BERSAGLIO 1</div>
+            <div id="attack-result-options"></div>
+        </div>
+    </div>
+
+    <!-- Tooltip globale per azioni/capacità -->
+    <div id="action-tooltip" class="action-tooltip-popup" style="display:none" onmouseleave="App.hideActionTooltip()"></div>
+
     <script src="js/config.js"></script>
+    <script src="js/stages.js"></script>
+    <script src="js/characters.js"></script>
+    <script src="js/equipment.js"></script>
+    <script src="js/guards.js"></script>
+    <script src="js/bosses.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>

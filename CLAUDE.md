@@ -63,8 +63,11 @@ La splash (`#menu-splash`) usa `CSS transition: opacity 3s linear` (NON keyframe
     isBoss: false,
     intro: "video/Stage_01_Intro.mp4",   // "" se assente
     outro: "video/Stage_01_Outro.mp4",
-    musicIds: ["cavern"],                 // chiavi da CONFIG.music
-    ambientIds: [],                       // chiavi da CONFIG.ambient
+    musicIds: ["cavern"],                 // chiavi da CONFIG.music (label = nome sul bottone)
+    events: [
+        { id: "A", file: "video/...", stopMusic: true },   // stopMusic: false = musica continua
+        { id: "B", file: "video/...", stopMusic: false, musicEvent: 20 }, // volume durante video, poi ripristina
+    ],
     musicDuringIntro: true,
     musicIntroDelay: 67000,              // ms dall'inizio del video intro
     musicIntroVolume: 20,                // 0-100
