@@ -172,6 +172,7 @@ const CHARACTERS = {
         hurtSound:  'audio/sfx/meryl/ferito.wav',
         deathSound: 'audio/sfx/meryl/morte.wav',
         gameOverSound: "15",
+        debutStage: 3,                   // Prima apparizione: Stage 03
         baseEquipment: ["M01", "M02"],   // Equipaggiamento fisso al debutto in Stage 03
         hotspots: [
             { ref: "movimento-furtivo",      type: "fixed",    cx: 41.8, cy: 14.3 },

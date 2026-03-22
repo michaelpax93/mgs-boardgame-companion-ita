@@ -63,6 +63,51 @@ const EQUIPMENT = {
         },
     },
 
+    "006": {
+        name: "RAZIONI",
+        type: "item",
+        consumable: true,
+        action: {
+            name: "CONSUMA",
+            cost: 1,
+            desc: "Scarta fino a 2 danni. Poi scarta questa carta.",
+            sound: "audio/sfx/Razione usata.mp3",
+            heal: 2,
+        },
+    },
+
+    "004": {
+        name: "GRANATA STORDENTE",
+        type: "item",
+        consumable: true,
+        action: {
+            name: "GETTA",
+            cost: 1,
+            desc: "Bersaglia 1 casella in Linea di Vista entro 5 caselle. Metti KO ogni guardia entro 2 caselle dalla casella bersaglio e in Linea di Vista di quest'ultima. RUMOROSA: Colloca il tuo segnalino ! sotto la tua miniatura.",
+            alertImmediate: true,
+        },
+    },
+
+    "005": {
+        name: "C-4",
+        type: "item",
+        charges: 2,
+        actions: [
+            {
+                name: "PIAZZA",
+                cost: 1,
+                desc: "Colloca 1 C4 da questa carta in una casella adiacente.",
+                usesCharge: true,
+            },
+            {
+                name: "DETONA",
+                cost: 1,
+                desc: "Ogni C4 infligge 2 danni a ogni miniatura entro 1 casella in Linea di Vista. Se ci sono guardie in quella zona e il tuo segnalino ! non si trova sulla mappa, colloca il tuo segnalino ! nella stessa casella del C4 più vicino alla tua miniatura. Poi rimuovi dalla mappa tutti i C4.",
+                alertImmediate: true,
+            },
+        ],
+    },
+
     "M01": {
         name: "PISTOLA (CALIBRO .50)",
         owner: "Meryl",

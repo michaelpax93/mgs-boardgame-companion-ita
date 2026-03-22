@@ -1065,32 +1065,53 @@ const App = {
         // Sezione condizionale
         const condSection = document.getElementById('rewards-conditional-section');
         const conditionals = stage.rewards.conditional || [];
-        condSection.innerHTML = conditionals.map((cond, i) => `
-            <div class="rewards-popup-divider"></div>
-            <div class="rewards-cond-block" id="rewards-cond-${i}">
-                <div class="rewards-popup-section-label">OBIETTIVO OPZIONALE</div>
-                <div class="rewards-popup-question">${cond.question}</div>
-                <div class="rewards-popup-yesno">
-                    <button class="btn-codec rewards-no-btn active" id="rewards-no-${i}"
-                        onclick="App._rewardsToggle(${i}, false)">
-                        <span class="btn-inner">✕ NO</span>
-                    </button>
-                    <button class="btn-codec rewards-yes-btn" id="rewards-yes-${i}"
-                        onclick="App._rewardsToggle(${i}, true)">
-                        <span class="btn-inner">✓ SÌ</span>
-                    </button>
-                </div>
-                <div class="rewards-cond-items" id="rewards-cond-items-${i}" style="display:none">
-                    ${cond.equipmentIds.map(id => {
+        condSection.innerHTML = conditionals.map((cond, i) => {
+            if (cond.exclusive && cond.options) {
+                const optionsHtml = cond.options.map((opt, oi) => {
+                    const eqHtml = opt.equipmentIds.map(id => {
                         const eq = EQUIPMENT[id];
-                        return `<div class="rewards-equipment-item rewards-equipment-bonus">
-                            <span class="rewards-eq-id">${id}</span>
-                            <span class="rewards-eq-name">${eq ? eq.name : id}</span>
-                        </div>`;
-                    }).join('')}
-                </div>
-            </div>
-        `).join('');
+                        return `<span class="rewards-eq-tag">${eq ? eq.name : id}</span>`;
+                    }).join('');
+                    return `<label class="rewards-radio-option" id="rewards-opt-${i}-${oi}">
+                        <input type="radio" name="rewards-excl-${i}" value="${oi}"
+                            onchange="App._rewardsToggle(${i}, ${oi})">
+                        <span class="rewards-radio-label">${opt.label}</span>
+                        <span class="rewards-radio-eq">${eqHtml}</span>
+                    </label>`;
+                }).join('');
+                return `<div class="rewards-popup-divider"></div>
+                    <div class="rewards-cond-block" id="rewards-cond-${i}">
+                        <div class="rewards-popup-section-label">OBIETTIVO</div>
+                        <div class="rewards-popup-question">${cond.question}</div>
+                        <div class="rewards-radio-list">${optionsHtml}</div>
+                    </div>`;
+            }
+            // Fallback: YES/NO classico
+            return `<div class="rewards-popup-divider"></div>
+                <div class="rewards-cond-block" id="rewards-cond-${i}">
+                    <div class="rewards-popup-section-label">OBIETTIVO OPZIONALE</div>
+                    <div class="rewards-popup-question">${cond.question}</div>
+                    <div class="rewards-popup-yesno">
+                        <button class="btn-codec rewards-no-btn active" id="rewards-no-${i}"
+                            onclick="App._rewardsToggle(${i}, false)">
+                            <span class="btn-inner">✕ NO</span>
+                        </button>
+                        <button class="btn-codec rewards-yes-btn" id="rewards-yes-${i}"
+                            onclick="App._rewardsToggle(${i}, true)">
+                            <span class="btn-inner">✓ SÌ</span>
+                        </button>
+                    </div>
+                    <div class="rewards-cond-items" id="rewards-cond-items-${i}" style="display:none">
+                        ${(cond.equipmentIds || []).map(id => {
+                            const eq = EQUIPMENT[id];
+                            return `<div class="rewards-equipment-item rewards-equipment-bonus">
+                                <span class="rewards-eq-id">${id}</span>
+                                <span class="rewards-eq-name">${eq ? eq.name : id}</span>
+                            </div>`;
+                        }).join('')}
+                    </div>
+                </div>`;
+        }).join('');
 
         popup.style.display = 'flex';
     },
@@ -1100,9 +1121,9 @@ const App = {
         if (!stage || !stage.rewards) return;
         this._rewardsConditionalState[condIndex] = value;
 
+        // YES/NO classico
         document.getElementById(`rewards-no-${condIndex}`)?.classList.toggle('active', !value);
         document.getElementById(`rewards-yes-${condIndex}`)?.classList.toggle('active', value);
-
         const itemsEl = document.getElementById(`rewards-cond-items-${condIndex}`);
         if (itemsEl) itemsEl.style.display = value ? '' : 'none';
     },
@@ -1116,8 +1137,14 @@ const App = {
                 if (!pool.includes(id)) pool.push(id);
             });
             (stage.rewards.conditional || []).forEach((cond, i) => {
-                if (this._rewardsConditionalState[i]) {
-                    cond.equipmentIds.forEach(id => {
+                const val = this._rewardsConditionalState[i];
+                if (cond.exclusive && cond.options && val !== undefined && val !== false) {
+                    const opt = cond.options[val];
+                    (opt?.equipmentIds || []).forEach(id => {
+                        if (!pool.includes(id)) pool.push(id);
+                    });
+                } else if (!cond.exclusive && val === true) {
+                    (cond.equipmentIds || []).forEach(id => {
                         if (!pool.includes(id)) pool.push(id);
                     });
                 }
@@ -1607,7 +1634,6 @@ const App = {
         const items = slots.map(id => {
             const eq = EQUIPMENT[id];
             if (!eq) return '';
-            const a = eq.action || {};
 
             // Stato consumi
             let isExhausted = false;
@@ -1624,23 +1650,30 @@ const App = {
                 isExhausted = consumed[id] === true;
             }
 
-            const noTokens   = a.cost != null && a.cost > available;
-            const isDisabled = isExhausted || noTokens;
-            const noiseTag   = a.alertImmediate ? '⚠ ' : (a.noise ? '🔊 ' : '');
-            const diceHtml   = this._buildDiceHtml(a.dice);
-
-            return `<div class="eq-panel-item${isDisabled ? ' eq-item-disabled' : ''}" id="eq-item-${playerName}-${id}">
-                <div class="eq-panel-item-name">${eq.name}</div>
-                ${chargesHtml}
-                <button class="panel-btn eq-action-btn"
-                    ${isDisabled ? 'disabled' : ''}
+            // Supporto multi-azione (es. C-4) e singola azione
+            const actionList = eq.actions || (eq.action ? [eq.action] : []);
+            const btnsHtml = actionList.map((a, ai) => {
+                const chargeNeeded = a.usesCharge && eq.charges != null;
+                const remaining    = typeof consumed[id] === 'number' ? consumed[id] : (eq.charges ?? 0);
+                const noCharge     = chargeNeeded && remaining <= 0;
+                const noTokens     = a.cost != null && a.cost > available;
+                const disabled     = isExhausted || noCharge || noTokens;
+                const noiseTag     = a.alertImmediate ? '⚠ ' : (a.noise ? '🔊 ' : '');
+                const diceHtml     = this._buildDiceHtml(a.dice);
+                return `<button class="panel-btn eq-action-btn"
+                    ${disabled ? 'disabled' : ''}
                     onmouseenter="App.showTooltip(event,'${this._enc(a)}')"
                     onmouseleave="App.hideActionTooltip()"
-                    onclick="App.useEquipment('${playerName}','${id}')">
+                    onclick="App.useEquipment('${playerName}','${id}',${ai})">
                     <span class="panel-btn-name">${noiseTag}${a.name || '—'}</span>
                     <span class="panel-btn-cost">${a.cost != null ? a.cost : ''}${a.cost != null ? '<span class="cost-token">●</span>' : ''}</span>
-                </button>
-                ${diceHtml}
+                </button>${diceHtml}`;
+            }).join('');
+
+            return `<div class="eq-panel-item${isExhausted ? ' eq-item-disabled' : ''}" id="eq-item-${playerName}-${id}">
+                <div class="eq-panel-item-name">${eq.name}</div>
+                ${chargesHtml}
+                ${btnsHtml}
             </div>`;
         }).join('');
 
@@ -1652,10 +1685,11 @@ const App = {
         </div>`;
     },
 
-    useEquipment(playerName, equipId) {
+    useEquipment(playerName, equipId, actionIndex = 0) {
         const eq = EQUIPMENT[equipId];
         if (!eq) return;
-        const a = eq.action || {};
+        const actionList = eq.actions || (eq.action ? [eq.action] : []);
+        const a = actionList[actionIndex] || {};
 
         // Spendi token
         if (a.cost > 0) this.spendTokens(a.cost, playerName);
@@ -1665,7 +1699,7 @@ const App = {
 
         // Aggiorna stato consumi
         const consumed = this.equipmentConsumedState[playerName] || {};
-        if (eq.charges != null) {
+        if (a.usesCharge && eq.charges != null) {
             const current = typeof consumed[equipId] === 'number' ? consumed[equipId] : eq.charges;
             consumed[equipId] = Math.max(0, current - 1);
         } else if (eq.consumable) {
@@ -2081,9 +2115,13 @@ const App = {
         if (!ch || !ch.hotspots) return null;
 
         const actionMap = {};
-        (ch.fixedActions           || []).forEach(a => { actionMap[a.id] = { ...a, _atype: 'action'  }; });
-        (ch.defaultVariableActions || []).forEach(a => { actionMap[a.id] = { ...a, _atype: 'action'  }; });
-        (ch.abilities              || []).forEach(a => { actionMap[a.id] = { ...a, _atype: 'ability' }; });
+        const stageVarOverride = stage?.variableActions?.[playerName];
+        const varActionsToUse = stageVarOverride !== undefined
+            ? stageVarOverride.map(id => (ch.defaultVariableActions || []).find(a => a.id === id)).filter(Boolean)
+            : (ch.defaultVariableActions || []);
+        (ch.fixedActions || []).forEach(a => { actionMap[a.id] = { ...a, _atype: 'action'  }; });
+        varActionsToUse        .forEach(a => { actionMap[a.id] = { ...a, _atype: 'action'  }; });
+        (ch.abilities  || []).forEach(a => { actionMap[a.id] = { ...a, _atype: 'ability' }; });
 
         const usedMap  = this.abilityUsedState[playerName] || {};
         const available = this.playerTokenState.filter(t => t).length;
@@ -2176,10 +2214,10 @@ const App = {
                     <div class="plancia-col-header">AZIONI FISSE</div>
                     ${fixedHtml}
                 </div>
-                <div class="plancia-col">
+                ${varHtml ? `<div class="plancia-col">
                     <div class="plancia-col-header">AZIONI VARIABILI</div>
                     ${varHtml}
-                </div>
+                </div>` : ''}
             </div>
             ${abilityHtml ? `<div class="plancia-abilities-section">
                 <div class="plancia-col-header">CAPACITÀ</div>
@@ -2328,7 +2366,7 @@ const App = {
             const endLabel = isBoss ? 'FINE TURNO BOSS' : 'FINE FASE GUARDIE';
             const phasesHtml = (!isBoss && stage)
                 ? `<div id="soldier-phases">${this._buildSoldierPhaseHtml(stage)}</div>`
-                : '';
+                : (isBoss ? this._buildBossTurnHtml(stage) : '');
             content.innerHTML = `
                 <div class="turn-header">
                     <div class="turn-phase-badge turn-phase-soldiers">
@@ -2632,8 +2670,22 @@ const App = {
             this.playerZoneState[p] = 0;
         });
 
+        // Inizializza HP nemici boss
+        this.bossHpState = this.bossHpState || {};
+        const bossEnemies = stage.bossEnemies || [];
+        const playerCount = players.length;
+        bossEnemies.forEach(e => {
+            if (this.bossHpState[e.id] === undefined) {
+                const hp = e.hpByPlayerCount
+                    ? (e.hpByPlayerCount[playerCount] ?? e.hpByPlayerCount[1] ?? e.hp ?? 10)
+                    : (e.hp ?? 10);
+                this.bossHpState[e.id] = hp;
+            }
+        });
+
         const statsHtml = this._buildSessionStatsHtml();
-        sidebar.innerHTML = statsHtml + players.map(p => this._buildPlayerCard(p)).join('');
+        const bossHtml  = bossEnemies.map(e => this._buildBossEnemyCard(e)).join('');
+        sidebar.innerHTML = statsHtml + bossHtml + players.map(p => this._buildPlayerCard(p)).join('');
         sidebar.style.display = 'flex';
     },
 
@@ -2672,7 +2724,8 @@ const App = {
         const marker = this.markerState[playerName] || {};
         const stage  = this.currentStage;
         const currentZone = (this.playerZoneState && this.playerZoneState[playerName]) || 0;
-        const multiZone = stage && stage.enemies && stage.enemies.length > 1;
+        const isBoss    = stage?.isBoss || false;
+        const multiZone = !isBoss && stage && stage.enemies && stage.enemies.length > 1;
         const zoneHtml = multiZone ? `
             <select class="zone-select" onchange="App.setPlayerZone('${playerName}', this.value)">
                 ${stage.enemies.map((_, i) => {
@@ -2688,7 +2741,7 @@ const App = {
                 <span class="hp-value" id="hp-${playerName}">${hp}</span>
                 <button class="hp-btn" onclick="App.adjustHp('${playerName}',+1)">+</button>
             </div>
-            <div class="player-markers">
+            ${!isBoss ? `<div class="player-markers">
                 <button class="marker-btn marker-alert${marker.alert ? ' active' : ''}"
                     id="marker-alert-${playerName}"
                     onclick="App.toggleMarker('${playerName}','alert')">
@@ -2699,9 +2752,85 @@ const App = {
                     onclick="App.toggleMarker('${playerName}','inter')">
                     <span class="marker-circle">?</span>
                 </button>
-            </div>
+            </div>` : ''}
             ${zoneHtml}
         </div>`;
+    },
+
+    _buildBossEnemyCard(enemy) {
+        const hp = this.bossHpState[enemy.id] ?? 0;
+        return `<div class="player-card boss-enemy-card">
+            <div class="player-card-name" style="color:var(--codec-red)">${enemy.name}</div>
+            <div class="hp-tracker">
+                <button class="hp-btn" onclick="App.adjustBossHp('${enemy.id}',-1)">−</button>
+                <span class="hp-value" id="boss-hp-${enemy.id}">${hp}</span>
+                <button class="hp-btn" onclick="App.adjustBossHp('${enemy.id}',+1)">+</button>
+            </div>
+        </div>`;
+    },
+
+    _buildBossTurnHtml(stage) {
+        const enemies = stage?.bossEnemies || [];
+        return enemies.filter(e => e.attackSound || (e.cards && e.cards.length)).map(e => {
+            const attackBtn = e.attackSound
+                ? `<button class="btn-codec boss-attack-btn" onclick="App.playBossAttack('${e.id}')">
+                       ▶ ATTACCA
+                   </button>`
+                : '';
+            const cardsHtml = (e.cards && e.cards.length)
+                ? `<div class="boss-cards-row">
+                       <select class="boss-cards-select" id="boss-cards-select-${e.id}">
+                           <option value="">— Carta frase —</option>
+                           ${e.cards.map((c, i) => `<option value="${i}">${c.label}</option>`).join('')}
+                       </select>
+                       <button class="btn-codec boss-play-btn" onclick="App.playBossCard('${e.id}')">▶</button>
+                   </div>`
+                : '';
+            return `<div class="boss-turn-block">
+                <div class="boss-turn-name" style="color:var(--codec-red)">${e.name}</div>
+                ${attackBtn}
+                ${cardsHtml}
+            </div>`;
+        }).join('');
+    },
+
+    playBossAttack(enemyId) {
+        const enemy = this.currentStage?.bossEnemies?.find(e => e.id === enemyId);
+        if (enemy?.attackSound) this.playSfx(enemy.attackSound);
+    },
+
+    playBossCard(enemyId) {
+        const enemy = this.currentStage?.bossEnemies?.find(e => e.id === enemyId);
+        if (!enemy?.cards) return;
+        const sel = document.getElementById(`boss-cards-select-${enemyId}`);
+        const idx = sel ? parseInt(sel.value) : NaN;
+        if (isNaN(idx) || !enemy.cards[idx]) return;
+        this.playSfx(enemy.cards[idx].file);
+    },
+
+    adjustBossHp(enemyId, delta) {
+        if (!this.bossHpState || this.bossHpState[enemyId] === undefined) return;
+        const prev = this.bossHpState[enemyId];
+        this.bossHpState[enemyId] = Math.max(0, this.bossHpState[enemyId] + delta);
+        const current = this.bossHpState[enemyId];
+        const el = document.getElementById(`boss-hp-${enemyId}`);
+        if (el) {
+            el.textContent = current;
+            el.classList.add('hp-flash');
+            el.addEventListener('animationend', () => el.classList.remove('hp-flash'), { once: true });
+        }
+        if (delta < 0 && prev > 0) {
+            const enemy = this.currentStage?.bossEnemies?.find(e => e.id === enemyId);
+            if (enemy) {
+                const sound = current === 0 ? enemy.koSound : enemy.hitSound;
+                if (sound) this.playSfx(sound);
+                if (current === 0 && enemy.koTriggersGameOver) {
+                    setTimeout(() => this.triggerGameOver(), 1500);
+                } else if (current === 0 && enemy.koTriggersOutro) {
+                    setTimeout(() => this.playOutro(), 1500);
+                }
+            }
+        }
     },
 
     hidePlayerSidebar() {
@@ -2710,6 +2839,7 @@ const App = {
         this.hpState       = {};
         this.markerState   = {};
         this.playerZoneState = {};
+        this.bossHpState   = {};
     },
 
     adjustHp(playerName, delta) {
@@ -2842,18 +2972,6 @@ const App = {
                     sfx2.play().catch(() => {});
                 }, 100);
             }
-        } else if (action?.attackType === 'ranged' && action?.sound) {
-            // sparo → +100ms → soldato-colpito
-            const sfx1 = new Audio(action.sound);
-            sfx1.volume = vol;
-            sfx1.play().catch(() => {});
-            if (sounds.hit) {
-                setTimeout(() => {
-                    const sfx2 = new Audio(sounds.hit);
-                    sfx2.volume = vol;
-                    sfx2.play().catch(() => {});
-                }, 100);
-            }
         } else if (sounds.hit) {
             this._playActionSound(sounds.hit);
         }
@@ -2869,12 +2987,10 @@ const App = {
         const sounds     = isSneaking ? this.ATTACK_SOUNDS.guard : {};
         const vol        = 0.85;
 
-        const hitSoundFile = action?.attackType === 'ranged' && action?.sound
-            ? action.sound
-            : (action?.attackType === 'physical' ? 'audio/sfx/colpo-fisico.wav' : null);
+        const hitSoundFile = action?.attackType === 'physical' ? 'audio/sfx/colpo-fisico.wav' : null;
 
         if (hitSoundFile && isSneaking) {
-            // sparo/colpo → +100ms → soldato-colpito → +300ms → sparo/colpo → +100ms → soldato-ucciso → caduta → tonfo
+            // colpo → +100ms → soldato-colpito → +300ms → colpo → +100ms → soldato-ucciso → caduta → tonfo
             const sfx1 = new Audio(hitSoundFile);
             sfx1.volume = vol;
             sfx1.play().catch(() => {});
@@ -2960,8 +3076,8 @@ const App = {
     // Restituisce l'indice della zona della musica attualmente in riproduzione (-1 se nessuna)
     _currentMusicZoneIndex() {
         const stage = this.currentStage;
-        if (!stage || !this.currentMusicId) return -1;
-        return (stage.musicIds || []).indexOf(this.currentMusicId);
+        if (!stage || !this.lastMusicId) return -1;
+        return (stage.musicIds || []).indexOf(this.lastMusicId);
     },
 
     // Suona la musica della zona indicata.
@@ -2975,7 +3091,7 @@ const App = {
         const ids = stage.musicIds || [];
         const id  = ids[zoneIndex];
         if (!id) return;
-        if (id === this.currentMusicId) return; // già nella zona giusta
+        if (id === this.lastMusicId) return; // già nella zona giusta
         if (useElevator) {
             this.playMusic(id); // playMusic gestisce già l'elevator
         } else {
@@ -3165,7 +3281,10 @@ const App = {
 
         const unlocked = this.session?.unlockedEquipment || [];
         const players  = this._pendingSelectedPlayers || [];
-        const hasOwnerItems = players.some(p => Object.values(EQUIPMENT).some(eq => eq.owner === p));
+        // Owner items contano solo per i giocatori NON al debutto (già sbloccati)
+        const hasOwnerItems = players.some(p =>
+            !this._isCharacterDebut(p) && Object.values(EQUIPMENT).some(eq => eq.owner === p)
+        );
         if (unlocked.length > 0 || hasOwnerItems) {
             this._showEquipmentPopup();
         } else {
@@ -3175,10 +3294,23 @@ const App = {
 
     _doStartStage() {
         const players = this._pendingSelectedPlayers;
+        const isExtreme = this.session?.difficulty === 'EXTREME';
+        const maxSlots  = isExtreme ? 2 : 3;
         // Segna tutti i giocatori selezionati come "al debutto avvenuto"
+        // e auto-assegna baseEquipment ai debutanti (popup non mostrato)
         if (this.session) {
             const debuted = this.session.debutedCharacters || (this.session.debutedCharacters = []);
-            players.forEach(p => { if (!debuted.includes(p)) debuted.push(p); });
+            players.forEach(p => {
+                if (!debuted.includes(p)) debuted.push(p);
+                if (this._isCharacterDebut(p)) {
+                    const ch = CHARACTERS[p];
+                    if (ch?.baseEquipment?.length > 0) {
+                        if (!this.playerEquipment) this.playerEquipment = {};
+                        this.playerEquipment[p] = [...ch.baseEquipment.slice(0, maxSlots)];
+                        while (this.playerEquipment[p].length < maxSlots) this.playerEquipment[p].push(null);
+                    }
+                }
+            });
             this._persistSession();
         }
         const stageId = this._pendingStageId;
@@ -3192,16 +3324,22 @@ const App = {
     // EQUIPMENT SELECTION POPUP
     // ============================================
 
+    _isCharacterDebut(playerName) {
+        const ch = CHARACTERS[playerName];
+        const stageId = this._pendingStageId || this.currentStage?.id || 0;
+        // È debutto solo se è esattamente lo stage di prima apparizione del personaggio
+        return ch?.debutStage != null && stageId === ch.debutStage;
+    },
+
     _showEquipmentPopup() {
         const players = this._pendingSelectedPlayers;
-        const debuted  = this.session?.debutedCharacters || [];
 
         const isExtreme = this.session?.difficulty === 'EXTREME';
         const maxSlots  = isExtreme ? 2 : 3;
 
         this.playerEquipment = {};
         players.forEach(p => {
-            const isDebut = !debuted.includes(p);
+            const isDebut = this._isCharacterDebut(p);
             const ch = CHARACTERS[p];
             if (isDebut && ch?.baseEquipment?.length > 0) {
                 // Slot pre-compilati con l'equipaggiamento base, bloccati
@@ -3218,14 +3356,13 @@ const App = {
 
     _renderEquipmentPopup() {
         const players   = this._pendingSelectedPlayers;
-        const debuted   = this.session?.debutedCharacters || [];
         const unlocked  = this.session?.unlockedEquipment || [];
         const isExtreme = this.session?.difficulty === 'EXTREME';
         const maxSlots  = isExtreme ? 2 : 3;
         const content   = document.getElementById('equipment-popup-content');
 
         content.innerHTML = players.map(p => {
-            const isDebut = !debuted.includes(p);
+            const isDebut = this._isCharacterDebut(p);
             const color   = this.PLAYER_COLORS[p] || 'var(--codec-green)';
             const slots   = (this.playerEquipment[p] || [null, null, null]).slice(0, maxSlots);
 

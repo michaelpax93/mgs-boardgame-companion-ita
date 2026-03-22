@@ -89,6 +89,18 @@ const STAGES = [
         musicIntroVolume: 20,
         gameOverSounds: ["02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"],
         orderCards: 13,
+        rewards: {
+            conditional: [
+                {
+                    exclusive: true,
+                    question: "Come hai completato lo stage?",
+                    options: [
+                        { label: "Hai sconfitto 12+ guardie nelle Celle di Detenzione", equipmentIds: ["004"] },
+                        { label: "Hai raggiunto il punto C e successivamente l'uscita",  equipmentIds: ["005"] },
+                    ],
+                },
+            ],
+        },
     },
     {
         id: 4,
@@ -101,10 +113,35 @@ const STAGES = [
         outro: "video/stage_04_outro.mp4",
         musicIds: ["duel"],
         musicLabels: ["Boss"],
+        variableActions: { "Snake": [], "Meryl": [] },
         musicDuringIntro: false,
         musicIntroDelay: 0,
         musicIntroVolume: 20,
         gameOverSounds: ["14"],
+        bossEnemies: [
+            {
+                id: "ocelot",
+                name: "OCELOT",
+                hpByPlayerCount: { 1: 12, 2: 20 },
+                attackSound: "audio/sfx/ocelot/attacco-ocelot.wav",
+                koTriggersOutro: true,
+                hitSound: "audio/sfx/ocelot/ocelot-colpito.wav",
+                koSound:  "audio/sfx/ocelot/ocelot-ko.wav",
+                cards: [
+                    { label: "Adoro il profumo della cordite...",                              file: "audio/sfx/ocelot/Adoro il profumo della cordite... Per te, però, sarà il profumo della tua morte.wav" },
+                    { label: "Meglio se ti sbrighi.",                                          file: "audio/sfx/ocelot/Meglio se ti sbrighi. Il vecchio non resisterà a lungo.wav" },
+                    { label: "Nasconderti non ti aiuterà.",                                    file: "audio/sfx/ocelot/Nasconderti non ti aiuterà.wav" },
+                    { label: "Non c'è cosa più bella...",                                      file: "audio/sfx/ocelot/Non c'è cosa più bella della sensazione di un lungo proiettile d'argento che scivola in un tamburo ben oliato.wav" },
+                    { label: "Non vuoi risolvere la questione.",                               file: "audio/sfx/ocelot/Non vuoi risolvere la questione.wav" },
+                    { label: "Ci siamo, sono di nuovo vivo, andiamo.",                         file: "audio/sfx/ocelot/ci siamo sono di nuovo vivo andiamo.wav" },
+                    { label: "Io li capisco i proiettili...",                                  file: "audio/sfx/ocelot/io li capisco i proiettili sai riesco a farli andare dove voglio.wav" },
+                ],
+            },
+            { id: "baker",  name: "BAKER",  hp: 3, hitSound: "audio/sfx/ocelot/baker-colpito.wav", koSound: "audio/sfx/ocelot/baker-ko.wav", koTriggersGameOver: true },
+        ],
+        rewards: {
+            always: ["006"],
+        },
         sfxOnMusicStart: [
             { file: "audio/sfx/ocelot/estrai.wav", delay: 3000 },
             { file: "audio/sfx/baker.wav", delay: 6000, interval: 3000, volume: 0.2 },
