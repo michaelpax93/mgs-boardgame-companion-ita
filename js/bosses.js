@@ -12,6 +12,17 @@
 
 const BOSSES = {
 
-    // Da definire progressivamente
+    // disableAttackPopup: true → durante la boss fight il popup "RISULTATO ATTACCO"
+    // (NESSUN COLPO / COLPITO / COLPITO E SCONFITTO) non viene mostrato.
+    // Utile per boss con meccaniche di danno proprie (es. Ocelot con HP tracciati a parte).
+
+    "REVOLVER OCELOT":         { disableAttackPopup: false },
+    "IMBOSCATA DEL CARRO ARMATO": { disableAttackPopup: false },
+    "NINJA CYBORG":            { disableAttackPopup: false },
+    "PSYCHO MANTIS":           { disableAttackPopup: false },
+    "HELICOPTER GUNSHIP":      { disableAttackPopup: false },
+    "SNIPER WOLF":             { disableAttackPopup: false },
+    "VULCAN RAVEN":            { disableAttackPopup: false },
+    "METAL GEAR REX":          { disableAttackPopup: false },
 
 };

@@ -25,8 +25,9 @@ const CHARACTERS = {
 
     "Snake": {
         hp: 4,
-        hurtSound:  'audio/sfx/snake/ferito.wav',
-        deathSound: 'audio/sfx/snake/morte.wav',
+        hurtSound:     'audio/sfx/snake/ferito.wav',
+        hurtPlusSound: 'audio/sfx/snake/ferito+.wav',
+        deathSound:    'audio/sfx/snake/morte.wav',
         baseEquipment: [],   // Snake non ha equipaggiamento base fisso (ottiene tutto tramite ricompense)
         // Hotspots: definiscono ordine e tipo di ogni azione sulla plancia (fixed/variable/ability)
         hotspots: [
@@ -95,6 +96,7 @@ const CHARACTERS = {
                 cost: 1,
                 attack: true,
                 attackType: "physical",
+                category: "melee",
                 targets: 1,
                 dice: [{ color: "white", count: 1 }],
                 sound: "audio/azioni/snake/attacco-corpo-a-corpo.wav",
@@ -106,6 +108,7 @@ const CHARACTERS = {
                 cost: 2,
                 attack: true,
                 attackType: "physical",
+                category: "melee",
                 targets: 1,
                 dice: [{ color: "white", count: 2 }, { color: "black", count: 1 }],
                 sound: "audio/azioni/snake/attacco-combo.wav",
@@ -169,8 +172,9 @@ const CHARACTERS = {
 
     "Meryl": {
         hp: 4,
-        hurtSound:  'audio/sfx/meryl/ferito.wav',
-        deathSound: 'audio/sfx/meryl/morte.wav',
+        hurtSound:     'audio/sfx/meryl/ferito.wav',
+        hurtPlusSound: 'audio/sfx/meryl/ferito+.wav',
+        deathSound:    'audio/sfx/meryl/morte.wav',
         gameOverSound: "15",
         debutStage: 3,                   // Prima apparizione: Stage 03
         baseEquipment: ["M01", "M02"],   // Equipaggiamento fisso al debutto in Stage 03
@@ -212,6 +216,7 @@ const CHARACTERS = {
                 label: "+ Azione",
                 desc: "Ottieni 1 azione aggiuntiva",
                 cost: 2,
+                grantsAction: 1,
             },
         ],
         fixedActions: [
@@ -237,6 +242,7 @@ const CHARACTERS = {
                 cost: 1,
                 attack: true,
                 attackType: "physical",
+                category: "melee",
                 targets: 1,
                 dice: [{ color: "white", count: 1 }],
                 sound: "audio/azioni/snake/attacco-corpo-a-corpo.wav",
@@ -248,6 +254,7 @@ const CHARACTERS = {
                 cost: 2,
                 attack: true,
                 attackType: "physical",
+                category: "melee",
                 targets: 1,
                 dice: [{ color: "white", count: 2 }, { color: "black", count: 1 }],
                 sound: "audio/azioni/snake/attacco-combo.wav",

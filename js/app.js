@@ -100,6 +100,8 @@ const App = {
     // Azione attacco in attesa di risultato popup
     _pendingAttackPlayer: null,
     _pendingAttackActionId: null,
+    _pendingBossDamageAmount: 0,
+    _pendingBossDamageEnemy: null,
 
     // Traccia se questo round il giocatore ha usato un attacco (fisico o arma) / solo arma
     _anyAttackUsedByPlayer: {},
@@ -137,6 +139,8 @@ const App = {
     playerEquipment: {},
     // Stato consumo per stage: playerName → { equipId: bool }
     equipmentConsumedState: {},
+    equipmentFlagState: {},   // playerName → { equipId → { flagName: bool } }
+    bossSectionChargeState: {}, // sectionId → remaining charges
 
     // Contatore azioni rumorose (noise:true) per giocatore nel turno corrente
     // Azzerato a inizio round. A fine turno del giocatore mostra popup promemoria dadi.
@@ -1086,6 +1090,46 @@ const App = {
                         <div class="rewards-radio-list">${optionsHtml}</div>
                     </div>`;
             }
+            // Barcode secret
+            if (cond.type === 'barcode') {
+                const eqHtml = (cond.equipmentIds || []).map(id => {
+                    const eq = EQUIPMENT[id];
+                    return `<div class="rewards-equipment-item rewards-equipment-bonus">
+                        <span class="rewards-eq-id">${id}</span>
+                        <span class="rewards-eq-name">${eq ? eq.name : id}</span>
+                    </div>`;
+                }).join('');
+                return `<div class="rewards-popup-divider"></div>
+                    <div class="rewards-cond-block" id="rewards-cond-${i}">
+                        <div class="rewards-popup-section-label">SEGRETO</div>
+                        <div class="rewards-popup-question">${cond.question}</div>
+                        <div class="rewards-popup-yesno">
+                            <button class="btn-codec rewards-no-btn active" id="rewards-no-${i}"
+                                onclick="App._rewardsToggle(${i}, false)">
+                                <span class="btn-inner">✕ NO</span>
+                            </button>
+                            <button class="btn-codec rewards-yes-btn" id="rewards-yes-${i}"
+                                onclick="App._rewardsToggle(${i}, true)">
+                                <span class="btn-inner">✓ SÌ</span>
+                            </button>
+                        </div>
+                        <div id="rewards-barcode-no-hint-${i}" class="rewards-barcode-hint" style="display:none">
+                            Devi leggere il capitolo prima di continuare. Quando sei pronto, seleziona SÌ.
+                        </div>
+                        <div id="rewards-barcode-wrap-${i}" style="display:none">
+                            <div class="rewards-popup-question rewards-barcode-prompt">${cond.prompt}</div>
+                            <input type="text" id="rewards-barcode-val-${i}" maxlength="3"
+                                class="rewards-barcode-input" placeholder="_ _ _"
+                                oninput="App._rewardsBarcodeCheck(${i})">
+                            <div id="rewards-barcode-wrong-hint-${i}" class="rewards-barcode-hint rewards-barcode-hint-wrong" style="display:none">
+                                Guarda meglio sulla confezione della scatola sotto il codice a barre. Si tratta di un equipaggiamento.
+                            </div>
+                            <div id="rewards-barcode-result-${i}" class="rewards-cond-items" style="display:none">
+                                ${eqHtml}
+                            </div>
+                        </div>
+                    </div>`;
+            }
             // Fallback: YES/NO classico
             return `<div class="rewards-popup-divider"></div>
                 <div class="rewards-cond-block" id="rewards-cond-${i}">
@@ -1114,18 +1158,75 @@ const App = {
         }).join('');
 
         popup.style.display = 'flex';
+        this._updateRewardsConfirmBtn();
+    },
+
+    _updateRewardsConfirmBtn() {
+        const btn = document.getElementById('rewards-confirm-btn');
+        if (!btn) return;
+        const conditionals = this.currentStage?.rewards?.conditional || [];
+        const blocked = conditionals.some((cond, i) =>
+            cond.exclusive && cond.options && this._rewardsConditionalState[i] === undefined
+        );
+        btn.disabled = blocked;
+        btn.style.opacity = blocked ? '0.35' : '';
     },
 
     _rewardsToggle(condIndex, value) {
         const stage = this.currentStage;
         if (!stage || !stage.rewards) return;
-        this._rewardsConditionalState[condIndex] = value;
+        const cond = (stage.rewards.conditional || [])[condIndex];
 
-        // YES/NO classico
         document.getElementById(`rewards-no-${condIndex}`)?.classList.toggle('active', !value);
         document.getElementById(`rewards-yes-${condIndex}`)?.classList.toggle('active', value);
+
+        // Barcode secret
+        if (cond?.type === 'barcode') {
+            const noHint = document.getElementById(`rewards-barcode-no-hint-${condIndex}`);
+            const wrap   = document.getElementById(`rewards-barcode-wrap-${condIndex}`);
+            if (value) {
+                if (noHint) noHint.style.display = 'none';
+                if (wrap)   wrap.style.display = '';
+            } else {
+                if (noHint) noHint.style.display = '';
+                if (wrap)   wrap.style.display = 'none';
+                this._rewardsConditionalState[condIndex] = false;
+                const inp = document.getElementById(`rewards-barcode-val-${condIndex}`);
+                if (inp) inp.value = '';
+                const res = document.getElementById(`rewards-barcode-result-${condIndex}`);
+                if (res) res.style.display = 'none';
+                const wrongHint = document.getElementById(`rewards-barcode-wrong-hint-${condIndex}`);
+                if (wrongHint) wrongHint.style.display = 'none';
+            }
+            return;
+        }
+
+        // YES/NO classico o opzione esclusiva (value = indice opzione o bool)
+        this._rewardsConditionalState[condIndex] = value;
         const itemsEl = document.getElementById(`rewards-cond-items-${condIndex}`);
         if (itemsEl) itemsEl.style.display = value ? '' : 'none';
+        this._updateRewardsConfirmBtn();
+    },
+
+    _rewardsBarcodeCheck(condIndex) {
+        const stage = this.currentStage;
+        if (!stage?.rewards) return;
+        const cond = (stage.rewards.conditional || [])[condIndex];
+        if (!cond || cond.type !== 'barcode') return;
+        const inp = document.getElementById(`rewards-barcode-val-${condIndex}`);
+        const val = inp ? inp.value.trim() : '';
+        const match = val.toUpperCase() === cond.secret.toUpperCase();
+        const wrongHint = document.getElementById(`rewards-barcode-wrong-hint-${condIndex}`);
+        const res       = document.getElementById(`rewards-barcode-result-${condIndex}`);
+        if (match) {
+            if (wrongHint) wrongHint.style.display = 'none';
+            if (res)       res.style.display = '';
+        } else {
+            if (res) res.style.display = 'none';
+            // Mostra il hint solo se l'utente ha inserito 3 caratteri (tentativo completo)
+            if (wrongHint) wrongHint.style.display = val.length === 3 ? '' : 'none';
+        }
+        this._rewardsConditionalState[condIndex] = match;
     },
 
     _rewardsConfirm() {
@@ -1468,6 +1569,11 @@ const App = {
                 else                      this.equipmentConsumedState[p][id] = null;
             });
         });
+        // Inizializza charges sezioni boss
+        this.bossSectionChargeState = {};
+        (this.currentStage?.bossTurnSections || []).forEach(sec => {
+            if (sec.id && sec.charges != null) this.bossSectionChargeState[sec.id] = sec.charges;
+        });
         this._renderTurnSection();
     },
 
@@ -1488,7 +1594,10 @@ const App = {
         this.playerTokenState = [true, true, true, true];
         const el = document.getElementById('token-dots');
         if (el) el.innerHTML = this._buildTokenHtml();
-        this._updatePlanciaButtonStates(this._activePlanciaPlayer());
+        const player = this._activePlanciaPlayer();
+        this._updatePlanciaButtonStates(player);
+        this._refreshEquipmentPanel(player);
+        this._refreshPlayerBossSections();
     },
 
     // Giocatore attualmente sulla plancia
@@ -1505,6 +1614,8 @@ const App = {
         const el = document.getElementById('token-dots');
         if (el) el.innerHTML = this._buildTokenHtml();
         this._updatePlanciaButtonStates(playerName);
+        this._refreshEquipmentPanel(playerName);
+        this._refreshPlayerBossSections();
     },
 
     // Ricalcola disabled su tutti i bottoni della plancia
@@ -1517,8 +1628,9 @@ const App = {
         const inConcMode = this._concMode && this._concModePlayer === playerName;
         const stageDisabled = new Set(this.currentStage?.disabledActions || []);
         const actionMap  = {};
-        (ch.fixedActions           || []).forEach(a => { actionMap[a.id] = a; });
-        (ch.defaultVariableActions || []).forEach(a => { actionMap[a.id] = a; });
+        (ch.fixedActions || []).forEach(a => { actionMap[a.id] = a; });
+        const varActions = this._resolvePlanciaVarActions(playerName, this.currentStage);
+        varActions.forEach(a => { actionMap[a._hotspotRef || a.id] = a; });
 
         ch.hotspots.forEach(h => {
             const btn = document.getElementById(`hotspot-${playerName}-${h.ref}`);
@@ -1527,8 +1639,10 @@ const App = {
             if (!a) return;
 
             let disabled = stageDisabled.has(a.id);
-            if (!disabled && inConcMode) {
-                // In conc mode solo il bottone concentrazione rimane attivo (funge da annulla)
+            if (!disabled && a._bossSectionId !== undefined) {
+                const remaining = this.bossSectionChargeState[a._bossSectionId] ?? a._bossSectionCharges;
+                disabled = (a.usesCharge && remaining <= 0) || (typeof a.cost === 'number' && a.cost > available);
+            } else if (!disabled && inConcMode) {
                 disabled = a.id !== 'concentrazione';
                 btn.classList.toggle('conc-mode-active', a.id === 'concentrazione');
             } else {
@@ -1652,12 +1766,19 @@ const App = {
 
             // Supporto multi-azione (es. C-4) e singola azione
             const actionList = eq.actions || (eq.action ? [eq.action] : []);
-            const btnsHtml = actionList.map((a, ai) => {
+            const disabledList = actionList.map(a => {
                 const chargeNeeded = a.usesCharge && eq.charges != null;
                 const remaining    = typeof consumed[id] === 'number' ? consumed[id] : (eq.charges ?? 0);
                 const noCharge     = chargeNeeded && remaining <= 0;
                 const noTokens     = a.cost != null && a.cost > available;
-                const disabled     = isExhausted || noCharge || noTokens;
+                const flagBlocked  = a.requiresFlag
+                    ? !(this.equipmentFlagState[playerName]?.[id]?.[a.requiresFlag])
+                    : false;
+                return (eq.consumable && isExhausted) || (a.usesCharge && isExhausted) || noCharge || noTokens || flagBlocked;
+            });
+            const allDisabled = disabledList.every(Boolean);
+            const btnsHtml = actionList.map((a, ai) => {
+                const disabled = disabledList[ai];
                 const noiseTag     = a.alertImmediate ? '⚠ ' : (a.noise ? '🔊 ' : '');
                 const diceHtml     = this._buildDiceHtml(a.dice);
                 return `<button class="panel-btn eq-action-btn"
@@ -1670,7 +1791,7 @@ const App = {
                 </button>${diceHtml}`;
             }).join('');
 
-            return `<div class="eq-panel-item${isExhausted ? ' eq-item-disabled' : ''}" id="eq-item-${playerName}-${id}">
+            return `<div class="eq-panel-item${allDisabled ? ' eq-item-disabled' : ''}" id="eq-item-${playerName}-${id}">
                 <div class="eq-panel-item-name">${eq.name}</div>
                 ${chargesHtml}
                 ${btnsHtml}
@@ -1694,8 +1815,18 @@ const App = {
         // Spendi token
         if (a.cost > 0) this.spendTokens(a.cost, playerName);
 
-        // Suono azione
-        if (a.sound) this._playActionSound(a.sound);
+        // Suono azione (con eventuale followUp per stage specifico)
+        if (a.sound) {
+            const followUp = a.followUpByStage?.[this.currentStage?.id];
+            if (followUp) {
+                const audio = new Audio(a.sound);
+                audio.volume = 0.85;
+                audio.addEventListener('ended', () => this.playSfx(followUp), { once: true });
+                audio.play().catch(() => {});
+            } else {
+                this._playActionSound(a.sound);
+            }
+        }
 
         // Aggiorna stato consumi
         const consumed = this.equipmentConsumedState[playerName] || {};
@@ -1706,6 +1837,16 @@ const App = {
             consumed[equipId] = true;
         }
         this.equipmentConsumedState[playerName] = consumed;
+
+        // Aggiorna flag equipaggiamento
+        if (a.setsFlag || a.clearsFlag) {
+            const flags = this.equipmentFlagState[playerName] || {};
+            const eqFlags = flags[equipId] || {};
+            if (a.setsFlag)   eqFlags[a.setsFlag]   = true;
+            if (a.clearsFlag) eqFlags[a.clearsFlag]  = false;
+            flags[equipId] = eqFlags;
+            this.equipmentFlagState[playerName] = flags;
+        }
 
         // Cura
         if (a.heal) this.adjustHp(playerName, a.heal);
@@ -1909,10 +2050,11 @@ const App = {
             if (dots) dots.innerHTML = this._buildTokenHtml();
         }
 
+        const activePlayer = this.stagePlayers[this.currentPlayerIndex];
         const row = document.getElementById('meryl-shared-ability-row');
-        if (row) row.outerHTML = this._buildMerylSharedAbilityHtml(
-            this.stagePlayers[this.currentPlayerIndex]
-        );
+        if (row) row.outerHTML = this._buildMerylSharedAbilityHtml(activePlayer);
+        this._updatePlanciaButtonStates(activePlayer);
+        this._refreshEquipmentPanel(activePlayer);
     },
 
     // ============================================
@@ -2001,12 +2143,31 @@ const App = {
         }
 
         // Modalità normale: toggle semplice
-        this.concentrationState[playerName][i] = !this.concentrationState[playerName][i];
+        const wasAvail = this.concentrationState[playerName][i];
+        this.concentrationState[playerName][i] = !wasAvail;
         const btn = document.getElementById(`conc-btn-${playerName}-${i}`);
         if (btn) {
             const avail = this.concentrationState[playerName][i];
             btn.classList.toggle('available',  avail);
             btn.classList.toggle('spent',     !avail);
+        }
+        // Effetti speciali al momento della spesa (available → spent)
+        const ch2   = CHARACTERS[playerName];
+        const token = ch2?.concentrationTokens?.[i];
+        if (token?.grantsAction) {
+            const delta = wasAvail ? token.grantsAction : -token.grantsAction; // undo se ri-cliccato
+            for (let d = 0; d < Math.abs(delta); d++) {
+                if (delta > 0) {
+                    const idx = this.playerTokenState.findIndex(t => !t);
+                    if (idx !== -1) this.playerTokenState[idx] = true;
+                } else {
+                    const idx = this.playerTokenState.findLastIndex(t => t);
+                    if (idx !== -1) this.playerTokenState[idx] = false;
+                }
+            }
+            const el = document.getElementById('token-dots');
+            if (el) el.innerHTML = this._buildTokenHtml();
+            this._refreshEquipmentPanel(playerName);
         }
         this._updatePlanciaButtonStates(playerName);
     },
@@ -2110,17 +2271,48 @@ const App = {
         }, { once: true });
     },
 
+    // Restituisce le azioni variabili per la plancia.
+    // Se variableActions è [] e ci sono bossTurnSections, inietta quelle nelle posizioni variable.
+    _resolvePlanciaVarActions(playerName, stage) {
+        const ch = CHARACTERS[playerName];
+        const stageVarOverride = stage?.variableActions?.[playerName];
+        if (stageVarOverride !== undefined && stageVarOverride.length === 0 && stage?.bossTurnSections?.length) {
+            const varHotspots = (ch.hotspots || []).filter(h => h.type === 'variable');
+            const result = [];
+            let idx = 0;
+            for (const sec of stage.bossTurnSections) {
+                for (let ai = 0; ai < sec.actions.length; ai++) {
+                    const slotIdx = sec.slots ? sec.slots[ai] : idx++;
+                    if (slotIdx == null || slotIdx >= varHotspots.length) continue;
+                    result.push({
+                        ...sec.actions[ai],
+                        _hotspotRef: varHotspots[slotIdx].ref,
+                        _bossSectionId: sec.id,
+                        _bossSectionActionIndex: ai,
+                        _bossSectionCharges: sec.charges,
+                        _atype: 'action',
+                    });
+                }
+            }
+            return result;
+        }
+        if (stageVarOverride !== undefined) {
+            return stageVarOverride.map(id => (ch.defaultVariableActions || []).find(a => a.id === id)).filter(Boolean);
+        }
+        return ch.defaultVariableActions || [];
+    },
+
     _buildPlanciaOverlay(playerName, stage) {
         const ch = CHARACTERS[playerName];
         if (!ch || !ch.hotspots) return null;
 
         const actionMap = {};
-        const stageVarOverride = stage?.variableActions?.[playerName];
-        const varActionsToUse = stageVarOverride !== undefined
-            ? stageVarOverride.map(id => (ch.defaultVariableActions || []).find(a => a.id === id)).filter(Boolean)
-            : (ch.defaultVariableActions || []);
+        const varActionsToUse = this._resolvePlanciaVarActions(playerName, stage);
         (ch.fixedActions || []).forEach(a => { actionMap[a.id] = { ...a, _atype: 'action'  }; });
-        varActionsToUse        .forEach(a => { actionMap[a.id] = { ...a, _atype: 'action'  }; });
+        varActionsToUse.forEach(a => {
+            const key = a._hotspotRef || a.id;
+            actionMap[key] = { ...a, _atype: 'action' };
+        });
         (ch.abilities  || []).forEach(a => { actionMap[a.id] = { ...a, _atype: 'ability' }; });
 
         const usedMap  = this.abilityUsedState[playerName] || {};
@@ -2149,6 +2341,9 @@ const App = {
                 } else if (a.id === 'lavoro-da-solo') {
                     isDisabled = isDisabled || !this._weaponAttackUsedByPlayer[playerName];
                 }
+            } else if (a._bossSectionId !== undefined) {
+                const remaining = this.bossSectionChargeState[a._bossSectionId] ?? a._bossSectionCharges;
+                isDisabled = (a.usesCharge && remaining <= 0) || (typeof a.cost === 'number' && a.cost > available);
             } else if (typeof a.cost === 'number') {
                 isDisabled = a.cost > available;
             } else if (a.cost === 'X') {
@@ -2156,6 +2351,42 @@ const App = {
                 const concState = this.concentrationState[playerName] || [];
                 const tokens = ch.concentrationTokens || [];
                 isDisabled = !tokens.some((t, i) => concState[i] === false && t.cost <= available);
+            }
+
+            // Boss section action: onclick specifico, ignora i call standard
+            if (a._bossSectionId !== undefined) {
+                const spendBoss = (typeof a.cost === 'number' && a.cost > 0)
+                    ? `App.spendTokens(${a.cost},'${playerName}');` : '';
+                const circleCls2 = ['plancia-circle-btn'].filter(Boolean).join(' ');
+                const costLabel2 = a.cost !== undefined ? String(a.cost) : '';
+                const diceHtml2  = this._buildDiceHtml(a.dice);
+                const enc2 = this._enc(a);
+                let chargesDotsHtml = '';
+                if (a.usesCharge && a._bossSectionCharges != null) {
+                    const remaining = this.bossSectionChargeState[a._bossSectionId] ?? a._bossSectionCharges;
+                    chargesDotsHtml = `<span class="hotspot-charges">${
+                        Array.from({ length: a._bossSectionCharges }, (_, i) =>
+                            `<span class="eq-charge-dot ${i < remaining ? 'full' : 'empty'}"></span>`
+                        ).join('')
+                    }</span>`;
+                }
+                const descHtml = a.desc ? `<span class="hotspot-action-desc">${a.desc}</span>` : '';
+                return `<div class="plancia-action-row plancia-action-row--with-desc${isDisabled ? ' action-disabled' : ''}">
+                    <button class="${circleCls2}"
+                        id="hotspot-${playerName}-${h.ref}"
+                        ${isDisabled ? 'disabled' : ''}
+                        onclick="${spendBoss}App.useBossSectionAction('${a._bossSectionId}',${a._bossSectionActionIndex});App._pulseHotspot(this);event.stopPropagation()">
+                        <span class="hotspot-cost">${costLabel2}</span>
+                    </button>
+                    <div class="hotspot-label-group">
+                        <div class="hotspot-label-line">
+                            <span class="hotspot-label">${a.name}</span>
+                            ${chargesDotsHtml}
+                            ${diceHtml2}
+                        </div>
+                        ${descHtml}
+                    </div>
+                </div>`;
             }
 
             const spendCall = (typeof a.cost === 'number' && a.cost > 0)
@@ -2306,6 +2537,9 @@ const App = {
 
             const eqHtml = this._buildEquipmentPanel(activePlayer);
 
+            const hasBossSectionsInPlancia = !!(stage?.bossTurnSections?.length && stage?.variableActions);
+            const bossSectionsHtml = hasBossSectionsInPlancia ? '' : this._buildPlayerBossSectionsHtml(stage);
+
             if (planciaHtml) {
                 // Layout con bottoni cerchio + segnalini concentrazione separati
                 const concHtml = this._buildPanelConc(activePlayer);
@@ -2317,7 +2551,8 @@ const App = {
                     + `<div class="plancia-conc-row">
                         <div class="turn-panel-col-header">SEGNALINI CONCENTRAZIONE</div>
                         <div class="plancia-conc-body">${concHtml}</div>
-                       </div>`;
+                       </div>`
+                    + bossSectionsHtml;
                 this._updatePlanciaButtonStates(activePlayer);
                 const merylSharedHtml = this._buildMerylSharedAbilityHtml(activePlayer);
                 if (merylSharedHtml) content.innerHTML += merylSharedHtml;
@@ -2347,6 +2582,7 @@ const App = {
                     </div>
                     ${eqColHtml}
                 </div>
+                ${bossSectionsHtml}
                 ${merylSharedHtml}`;
             }
             this._clearEquipmentSidebar();
@@ -2460,6 +2696,7 @@ const App = {
     },
 
     _trackNoise(playerName) {
+        if (this.currentStage?.isBoss) return;
         this._noiseCountThisTurn[playerName] = (this._noiseCountThisTurn[playerName] || 0) + 1;
     },
 
@@ -2671,14 +2908,18 @@ const App = {
         });
 
         // Inizializza HP nemici boss
-        this.bossHpState = this.bossHpState || {};
+        this.bossHpState           = this.bossHpState    || {};
+        this.bossMaxHpState        = this.bossMaxHpState || {};
+        this._bossCardFollowUpUsed = {};
+        this._ocelotZeroStreak     = 0;
         const bossEnemies = stage.bossEnemies || [];
         const playerCount = players.length;
         bossEnemies.forEach(e => {
+            const hp = e.hpByPlayerCount
+                ? (e.hpByPlayerCount[playerCount] ?? e.hpByPlayerCount[1] ?? e.hp ?? 10)
+                : (e.hp ?? 10);
+            this.bossMaxHpState[e.id] = hp;
             if (this.bossHpState[e.id] === undefined) {
-                const hp = e.hpByPlayerCount
-                    ? (e.hpByPlayerCount[playerCount] ?? e.hpByPlayerCount[1] ?? e.hp ?? 10)
-                    : (e.hp ?? 10);
                 this.bossHpState[e.id] = hp;
             }
         });
@@ -2769,18 +3010,79 @@ const App = {
         </div>`;
     },
 
+    _buildPlayerBossSectionsHtml(stage) {
+        const sections = stage?.bossTurnSections || [];
+        if (!sections.length) return '';
+        const available = this.playerTokenState.filter(t => t).length;
+        const items = sections.map(sec => {
+            const remaining = sec.id != null && sec.charges != null
+                ? (this.bossSectionChargeState[sec.id] ?? sec.charges)
+                : null;
+            const chargesHtml = remaining != null
+                ? `<div class="eq-panel-charges">${
+                    Array.from({ length: sec.charges }, (_, i) =>
+                        `<span class="eq-charge-dot ${i < remaining ? 'full' : 'empty'}"></span>`
+                    ).join('')}</div>`
+                : '';
+            const btns = sec.actions.map((a, ai) => {
+                const noCharge = a.usesCharge && remaining !== null && remaining <= 0;
+                const noTokens = typeof a.cost === 'number' && a.cost > available;
+                const disabled = noCharge || noTokens;
+                const diceHtml = this._buildDiceHtml(a.dice);
+                return `<button class="panel-btn eq-action-btn"
+                    ${disabled ? 'disabled' : ''}
+                    onmouseenter="App.showTooltip(event,'${this._enc(a)}')"
+                    onmouseleave="App.hideActionTooltip()"
+                    onclick="App.useBossSectionAction('${sec.id}',${ai})">
+                    <span class="panel-btn-name">${a.name}</span>
+                    <span class="panel-btn-cost">${a.cost != null ? a.cost : ''}${a.cost != null ? '<span class="cost-token">●</span>' : ''}</span>
+                </button>${diceHtml}`;
+            }).join('');
+            const allDisabled = sec.actions.every((a) => {
+                const noCharge = a.usesCharge && remaining !== null && remaining <= 0;
+                const noTokens = typeof a.cost === 'number' && a.cost > available;
+                return noCharge || noTokens;
+            });
+            return `<div class="eq-panel-item${allDisabled ? ' eq-item-disabled' : ''}">
+                <div class="eq-panel-item-name">${sec.label}</div>
+                ${chargesHtml}
+                ${btns}
+            </div>`;
+        }).join('');
+        return `<div class="eq-panel-row" id="player-boss-sections-panel">
+            <div class="turn-panel-col-header">RISORSE</div>
+            <div class="eq-panel-items">${items}</div>
+        </div>`;
+    },
+
+    _refreshPlayerBossSections() {
+        const el = document.getElementById('player-boss-sections-panel');
+        if (!el) return;
+        const html = this._buildPlayerBossSectionsHtml(this.currentStage);
+        if (!html) return;
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html.trim();
+        el.replaceWith(tmp.firstElementChild);
+    },
+
     _buildBossTurnHtml(stage) {
         const enemies = stage?.bossEnemies || [];
-        return enemies.filter(e => e.attackSound || (e.cards && e.cards.length)).map(e => {
-            const attackBtn = e.attackSound
-                ? `<button class="btn-codec boss-attack-btn" onclick="App.playBossAttack('${e.id}')">
-                       ▶ ATTACCA
-                   </button>`
+        const enemiesHtml = enemies.filter(e => e.attacks?.length || e.attackSound || e.movementSounds?.length || (e.cards && e.cards.length)).map(e => {
+            let attackBtn = '';
+            if (e.attacks && e.attacks.length) {
+                attackBtn = e.attacks.map((atk, ai) =>
+                    `<button class="btn-codec boss-attack-btn" onclick="App.playBossEnemyAttack('${e.id}',${ai})">▶ ${atk.name}</button>`
+                ).join('');
+            } else if (e.attackSound) {
+                attackBtn = `<button class="btn-codec boss-attack-btn" onclick="App.playBossAttack('${e.id}')">▶ ATTACCA</button>`;
+            }
+            const movementBtn = e.movementSounds?.length
+                ? `<button class="btn-codec boss-attack-btn" onclick="App.playBossMovement('${e.id}')">▶ MOVIMENTO</button>`
                 : '';
             const cardsHtml = (e.cards && e.cards.length)
                 ? `<div class="boss-cards-row">
                        <select class="boss-cards-select" id="boss-cards-select-${e.id}">
-                           <option value="">— Carta frase —</option>
+                           <option value="">— Frase della carta —</option>
                            ${e.cards.map((c, i) => `<option value="${i}">${c.label}</option>`).join('')}
                        </select>
                        <button class="btn-codec boss-play-btn" onclick="App.playBossCard('${e.id}')">▶</button>
@@ -2788,10 +3090,33 @@ const App = {
                 : '';
             return `<div class="boss-turn-block">
                 <div class="boss-turn-name" style="color:var(--codec-red)">${e.name}</div>
-                ${attackBtn}
+                <div style="display:flex;gap:0.5rem;flex-wrap:wrap">${attackBtn}${movementBtn}</div>
                 ${cardsHtml}
             </div>`;
         }).join('');
+
+        return enemiesHtml;
+    },
+
+    useBossSectionAction(sectionId, actionIndex) {
+        const stage = this.currentStage;
+        const sec   = stage?.bossTurnSections?.find(s => s.id === sectionId);
+        if (!sec) return;
+        const a = sec.actions[actionIndex];
+        if (!a) return;
+        if (a.sound) this.playSfx(a.sound);
+        let needsRender = false;
+        if (a.usesCharge && sec.charges != null) {
+            const cur = this.bossSectionChargeState[sectionId] ?? sec.charges;
+            this.bossSectionChargeState[sectionId] = Math.max(0, cur - 1);
+            needsRender = true;
+        }
+        if (a.restoresCharges && sec.charges != null) {
+            this.bossSectionChargeState[sectionId] = sec.charges;
+            needsRender = true;
+        }
+        if (needsRender) this._renderTurnSection();
+        if (a.attack) this.showAttackResultPopup(null, null, a);
     },
 
     playBossAttack(enemyId) {
@@ -2799,13 +3124,130 @@ const App = {
         if (enemy?.attackSound) this.playSfx(enemy.attackSound);
     },
 
+    playBossMovement(enemyId) {
+        const enemy = this.currentStage?.bossEnemies?.find(e => e.id === enemyId);
+        const sounds = enemy?.movementSounds;
+        if (!sounds?.length) return;
+        const file = sounds[Math.floor(Math.random() * sounds.length)];
+        this.playSfx(file);
+    },
+
+    playBossEnemyAttack(enemyId, attackIndex) {
+        const enemy = this.currentStage?.bossEnemies?.find(e => e.id === enemyId);
+        const atk   = enemy?.attacks?.[attackIndex];
+        if (!atk) return;
+        if (atk.sound) this.playSfx(atk.sound);
+        if (atk.hitPopup) this._showCannonHitPopup(atk);
+    },
+
+    _pendingCannonHitAtk: null,
+    _pendingCannonHitPlayer: null,
+    _pendingCannonHitDamage: 1,
+
+    _showCannonHitPopup(atk) {
+        const popup = document.getElementById('attack-result-popup');
+        if (!popup) return;
+        this._pendingCannonHitAtk    = atk;
+        this._pendingCannonHitDamage = 1;
+        // Auto-seleziona se c'è un solo giocatore
+        const players = this.stagePlayers || [];
+        this._pendingCannonHitPlayer = players.length === 1 ? players[0] : null;
+        document.getElementById('attack-result-title').textContent = 'COLPO DI CANNONE';
+        document.getElementById('attack-result-options').innerHTML = this._buildCannonHitPopupHtml();
+        popup.style.display = 'flex';
+    },
+
+    _buildCannonHitPopupHtml() {
+        const players = this.stagePlayers || [];
+        const confirmDisabled = !this._pendingCannonHitPlayer;
+        const playerBtns = players.map(p =>
+            `<button class="attack-result-btn boss-dmg-target${p === this._pendingCannonHitPlayer ? ' active' : ''}"
+                onclick="App.selectCannonHitPlayer('${p}')">${p.toUpperCase()}</button>`
+        ).join('');
+        return `
+            <div class="boss-dmg-targets">${playerBtns}</div>
+            <div class="boss-dmg-counter">
+                <button class="attack-result-btn boss-dmg-adj" onclick="App.adjustCannonHitDamage(-1)">−</button>
+                <span id="cannon-dmg-amount" class="boss-dmg-amount">${this._pendingCannonHitDamage}</span>
+                <button class="attack-result-btn boss-dmg-adj" onclick="App.adjustCannonHitDamage(1)">+</button>
+            </div>
+            <div class="boss-dmg-actions">
+                <button class="attack-result-btn" onclick="App.closeAttackResultPopup()">NESSUNO</button>
+                <button class="attack-result-btn attack-result-hit" id="cannon-confirm-btn"
+                    ${confirmDisabled ? 'disabled style="opacity:0.35"' : ''}
+                    onclick="App.confirmCannonHit()">CONFERMA</button>
+            </div>`;
+    },
+
+    selectCannonHitPlayer(playerName) {
+        this._pendingCannonHitPlayer = playerName;
+        document.querySelectorAll('#attack-result-popup .boss-dmg-target').forEach(btn => {
+            btn.classList.toggle('active', btn.textContent.trim() === playerName.toUpperCase());
+        });
+        const confirmBtn = document.getElementById('cannon-confirm-btn');
+        if (confirmBtn) {
+            confirmBtn.disabled = false;
+            confirmBtn.style.opacity = '';
+        }
+    },
+
+    adjustCannonHitDamage(delta) {
+        this._pendingCannonHitDamage = Math.max(1, (this._pendingCannonHitDamage || 1) + delta);
+        const el = document.getElementById('cannon-dmg-amount');
+        if (el) el.textContent = this._pendingCannonHitDamage;
+    },
+
+    confirmCannonHit() {
+        const playerName = this._pendingCannonHitPlayer;
+        const atk        = this._pendingCannonHitAtk;
+        const damage     = this._pendingCannonHitDamage || 0;
+        this.closeAttackResultPopup();
+        if (!playerName) return;
+        const hp = this.hpState[playerName] ?? 0;
+        if (hp <= 0) return;
+        const ch = CHARACTERS[playerName];
+        const surviving = hp - damage > 0;
+        if (surviving && ch?.hurtPlusSound) {
+            const hurtAudio = new Audio(ch.hurtPlusSound);
+            hurtAudio.volume = 0.85;
+            if (atk?.hitVideo) {
+                hurtAudio.addEventListener('ended', () => {
+                    setTimeout(() => {
+                        if (this.musicLoop?.isPlaying()) {
+                            this._eventMusicRestore = this.musicLoop.getVolume();
+                        }
+                        this.playVideo(atk.hitVideo);
+                    }, 2000);
+                }, { once: true });
+            }
+            hurtAudio.play().catch(() => {});
+        } else if (surviving && atk?.hitVideo) {
+            this._playBossHalfVideo(atk.hitVideo);
+        }
+        if (damage > 0) this.adjustHp(playerName, -damage, surviving);
+    },
+
+    _bossCardFollowUpUsed: {},
+
     playBossCard(enemyId) {
         const enemy = this.currentStage?.bossEnemies?.find(e => e.id === enemyId);
         if (!enemy?.cards) return;
         const sel = document.getElementById(`boss-cards-select-${enemyId}`);
         const idx = sel ? parseInt(sel.value) : NaN;
         if (isNaN(idx) || !enemy.cards[idx]) return;
-        this.playSfx(enemy.cards[idx].file);
+        const card = enemy.cards[idx];
+        const audio = new Audio(card.file);
+        audio.volume = 1.0;
+        if (card.followUp) {
+            const key = `${enemyId}-${idx}`;
+            const alreadyUsed = !!this._bossCardFollowUpUsed[key];
+            const followUpFile = (alreadyUsed && card.followUpAlt) ? card.followUpAlt : card.followUp;
+            audio.addEventListener('ended', () => {
+                this.playSfx(followUpFile);
+                this._bossCardFollowUpUsed[key] = true;
+            }, { once: true });
+        }
+        audio.play().catch(e => console.warn(e.message));
     },
 
     adjustBossHp(enemyId, delta) {
@@ -2822,12 +3264,25 @@ const App = {
         if (delta < 0 && prev > 0) {
             const enemy = this.currentStage?.bossEnemies?.find(e => e.id === enemyId);
             if (enemy) {
-                const sound = current === 0 ? enemy.koSound : enemy.hitSound;
-                if (sound) this.playSfx(sound);
-                if (current === 0 && enemy.koTriggersGameOver) {
-                    setTimeout(() => this.triggerGameOver(), 1500);
-                } else if (current === 0 && enemy.koTriggersOutro) {
-                    setTimeout(() => this.playOutro(), 1500);
+                if (current === 0) {
+                    // MORTE
+                    if (enemy.koSound) this.playSfx(enemy.koSound);
+                    if (enemy.koTriggersGameOver) {
+                        setTimeout(() => this.triggerGameOver(), 1500);
+                    } else {
+                        setTimeout(() => this.playOutro(), 1500);
+                    }
+                } else {
+                    const maxHp = this.bossMaxHpState?.[enemyId] ?? 0;
+                    const crossedHalf = maxHp > 0 && prev > maxHp / 2 && current <= maxHp / 2;
+                    if (crossedHalf && (enemy.hitHalfSound || enemy.hitHalfVideo)) {
+                        // FERITO+ — sotto la metà
+                        if (enemy.hitHalfSound) this.playSfx(enemy.hitHalfSound);
+                        if (enemy.hitHalfVideo) this._playBossHalfVideo(enemy.hitHalfVideo);
+                    } else {
+                        // FERITO normale
+                        if (enemy.hitSound) this.playSfx(enemy.hitSound);
+                    }
                 }
             }
         }
@@ -2836,13 +3291,25 @@ const App = {
     hidePlayerSidebar() {
         const sidebar = document.getElementById('player-sidebar');
         if (sidebar) sidebar.style.display = 'none';
-        this.hpState       = {};
-        this.markerState   = {};
+        this.hpState        = {};
+        this.markerState    = {};
         this.playerZoneState = {};
-        this.bossHpState   = {};
+        this.bossHpState    = {};
+        this.bossMaxHpState = {};
     },
 
-    adjustHp(playerName, delta) {
+    _playBossHalfVideo(videoFile) {
+        if (!videoFile) return;
+        setTimeout(() => {
+            // Stessa logica di playEvent con stopMusic: false — la musica continua
+            if (this.musicLoop && this.musicLoop.isPlaying()) {
+                this._eventMusicRestore = this.musicLoop.getVolume();
+            }
+            this.playVideo(videoFile);
+        }, 4000);
+    },
+
+    adjustHp(playerName, delta, skipHurtSound = false) {
         if (this.hpState[playerName] === undefined) return;
         const prev = this.hpState[playerName];
         const ch = CHARACTERS[playerName];
@@ -2850,7 +3317,7 @@ const App = {
         this.hpState[playerName] = Math.max(0, Math.min(maxHp, prev + delta));
         const current = this.hpState[playerName];
 
-        if (delta < 0 && current > 0 && ch?.hurtSound) {
+        if (!skipHurtSound && delta < 0 && current > 0 && ch?.hurtSound) {
             this._playActionSound(ch.hurtSound);
         }
 
@@ -2878,12 +3345,16 @@ const App = {
         }
     },
 
-    _lockStage() {
+    _lockStage(isGameOver = false) {
         document.getElementById('stage-active')?.classList.add('stage-locked');
+        if (isGameOver) {
+            document.getElementById('player-sidebar')?.classList.add('game-over');
+        }
     },
 
     _unlockStage() {
         document.getElementById('stage-active')?.classList.remove('stage-locked');
+        document.getElementById('player-sidebar')?.classList.remove('game-over');
     },
 
     toggleMarker(playerName, marker) {
@@ -2913,10 +3384,36 @@ const App = {
     showAttackResultPopup(playerName, actionId, actionObj = null) {
         const popup = document.getElementById('attack-result-popup');
         if (!popup) return;
-        this._pendingAttackActionObj = actionObj;
+        const bossData = this.currentStage?.isBoss ? BOSSES[this.currentStage.name] : null;
+        if (bossData?.disableAttackPopup) return;
+
+        // Risolvi sempre l'azione (serve sia per il filtro boss che per le reazioni)
+        const resolvedAction = actionObj ?? (() => {
+            if (!playerName || !actionId) return null;
+            const ch = CHARACTERS[playerName];
+            return [...(ch?.fixedActions || []), ...(ch?.defaultVariableActions || [])].find(a => a.id === actionId) ?? null;
+        })();
+        this._pendingAttackActionObj = resolvedAction;
         this._pendingAttackPlayer   = playerName;
         this._pendingAttackActionId = actionId;
 
+        // Boss stage con nemici HP-tracciati → popup danni boss
+        if (this.currentStage?.isBoss && (this.currentStage.bossEnemies || []).length > 0) {
+            const actionCategory = resolvedAction?.category ?? null;
+            const enemies = this.currentStage.bossEnemies.filter(e => {
+                if ((this.bossHpState[e.id] ?? 0) <= 0) return false;
+                if (e.excludeFrom && actionCategory && e.excludeFrom.includes(actionCategory)) return false;
+                if (!e.damageFrom) return true;
+                return actionCategory && e.damageFrom.includes(actionCategory);
+            });
+            if (enemies.length === 0) return;
+            this._pendingBossDamageAmount = 0;
+            this._pendingBossDamageEnemy  = enemies[0].id;
+            document.getElementById('attack-result-title').textContent = 'DANNI AL BOSS';
+            document.getElementById('attack-result-options').innerHTML = this._buildBossDamagePopupHtml(enemies);
+            popup.style.display = 'flex';
+            return;
+        }
 
         document.getElementById('attack-result-title').textContent = 'RISULTATO ATTACCO';
         document.getElementById('attack-result-options').innerHTML = `
@@ -2930,6 +3427,67 @@ const App = {
     closeAttackResultPopup() {
         const popup = document.getElementById('attack-result-popup');
         if (popup) popup.style.display = 'none';
+    },
+
+    _buildBossDamagePopupHtml(enemies) {
+        const targetHtml = enemies.length > 1
+            ? `<div class="boss-dmg-targets">${enemies.map(e =>
+                `<button class="attack-result-btn boss-dmg-target${e.id === this._pendingBossDamageEnemy ? ' active' : ''}"
+                    onclick="App.selectBossDamageTarget('${e.id}')">${e.name}</button>`
+              ).join('')}</div>`
+            : `<div class="boss-dmg-enemy-name">${enemies[0].name}</div>`;
+        return `
+            ${targetHtml}
+            <div class="boss-dmg-counter">
+                <button class="attack-result-btn boss-dmg-adj" onclick="App.adjustBossDamagePending(-1)">−</button>
+                <span id="boss-dmg-amount" class="boss-dmg-amount">${this._pendingBossDamageAmount}</span>
+                <button class="attack-result-btn boss-dmg-adj" onclick="App.adjustBossDamagePending(1)">+</button>
+            </div>
+            <div class="boss-dmg-actions">
+                <button class="attack-result-btn" onclick="App.closeAttackResultPopup()">ANNULLA</button>
+                <button class="attack-result-btn attack-result-hit" onclick="App.confirmBossDamage()">CONFERMA</button>
+            </div>`;
+    },
+
+    selectBossDamageTarget(enemyId) {
+        this._pendingBossDamageEnemy = enemyId;
+        document.querySelectorAll('.boss-dmg-target').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.boss-dmg-target').forEach(btn => {
+            if (btn.getAttribute('onclick')?.includes(`'${enemyId}'`)) btn.classList.add('active');
+        });
+    },
+
+    adjustBossDamagePending(delta) {
+        this._pendingBossDamageAmount = Math.max(0, (this._pendingBossDamageAmount || 0) + delta);
+        const el = document.getElementById('boss-dmg-amount');
+        if (el) el.textContent = this._pendingBossDamageAmount;
+    },
+
+    confirmBossDamage() {
+        const enemyId = this._pendingBossDamageEnemy;
+        const amount  = this._pendingBossDamageAmount || 0;
+        const action  = this._pendingAttackActionObj;
+        this._trackAttackHit();
+        this.closeAttackResultPopup();
+        if (amount > 0 && enemyId) {
+            if (enemyId === 'ocelot') this._ocelotZeroStreak = 0;
+            this.adjustBossHp(enemyId, -amount);
+            // Reazione Ocelot quando Baker viene colpito con arma a distanza
+            if (enemyId === 'baker') {
+                const cat = action?.category;
+                if (cat === 'pistol' || cat === 'rifle') {
+                    setTimeout(() => this.playSfx('audio/sfx/ocelot/a chi stai mirando.wav'), 800);
+                }
+            }
+        } else if (amount === 0 && enemyId === 'ocelot') {
+            const cat = action?.category;
+            if (cat === 'pistol' || cat === 'rifle') {
+                this._ocelotZeroStreak = (this._ocelotZeroStreak || 0) + 1;
+                if (this._ocelotZeroStreak % 2 === 0) {
+                    setTimeout(() => this.playSfx('audio/sfx/ocelot/bella mossa eroe.wav'), 300);
+                }
+            }
+        }
     },
 
     _getPendingAction() {
@@ -3759,15 +4317,17 @@ const App = {
         this.stopMusic();
         this.stopAlertSystem();
         this.trackStat('continues');
+        this._lockStage(true);
         // Suono specifico (es. morte Meryl) oppure random dal pool dello stage
         const pool = this.currentStage.gameOverSounds || CONFIG.gameOverSounds;
         if (pool && pool.length > 0 || specificSoundId) {
             const id = specificSoundId || pool[Math.floor(Math.random() * pool.length)];
             const file = id.includes('/') ? id : `${CONFIG.gameOverSoundsPath}${id}.mp3`;
+            const triggerAt = CONFIG.gameOverSoundsTiming?.[id] ?? 4;
             const video = document.getElementById('video-player');
             let soundPlayed = false;
             const onTimeUpdate = () => {
-                if (!soundPlayed && video.currentTime >= 4) {
+                if (!soundPlayed && video.currentTime >= triggerAt) {
                     soundPlayed = true;
                     video.removeEventListener('timeupdate', onTimeUpdate);
                     this.playSfx(file);
@@ -3775,15 +4335,15 @@ const App = {
             };
             video.addEventListener('timeupdate', onTimeUpdate);
         }
-        // Video Game Over — al termine resetta lo stage (preserva i giocatori scelti)
-        const savedPlayers = this.stagePlayers ? [...this.stagePlayers] : null;
+        // Video Game Over — al termine mostra popup selezione personaggi/equipaggiamento
+        const stageAtGameOver = this.currentStage;
         this.setActiveVideoBtn(document.getElementById('btn-game-over'));
         const videoEl = document.getElementById('video-player');
         if (videoEl) {
             videoEl.addEventListener('ended', () => {
                 this._unlockStage();
                 this.hidePlayerSidebar();
-                this.selectStage(this.currentStage.id, savedPlayers);
+                this.showPlayersPopup(stageAtGameOver);
             }, { once: true });
         }
         this.playVideo('video/Game_Over.mp4');

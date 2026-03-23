@@ -87,6 +87,12 @@ body {
     opacity: 0.25;
 }
 
+.player-sidebar.game-over .hp-btn,
+.player-sidebar.game-over .marker-btn {
+    pointer-events: none;
+    opacity: 0.25;
+}
+
 /* Blocco stats sessione */
 .session-stats-block {
     display: flex;
@@ -155,6 +161,20 @@ body {
     border-bottom: none;
 }
 
+.player-boss-sections {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin-top: 0.6rem;
+    padding-top: 0.6rem;
+    border-top: 1px solid rgba(255, 58, 58, 0.3);
+}
+
+.player-boss-section {
+    flex: 1 1 auto;
+    min-width: 10rem;
+}
+
 .boss-turn-block {
     display: flex;
     flex-direction: column;
@@ -168,10 +188,12 @@ body {
     font-weight: 700;
     letter-spacing: 0.1em;
 }
-.boss-attack-btn {
+.btn-codec.boss-attack-btn {
     font-size: 0.65rem;
-    padding: 0.3rem 0.6rem;
+    padding: 0.5rem 1.4rem;
     align-self: flex-start;
+    border-color: var(--codec-red);
+    color: var(--codec-red);
 }
 .boss-cards-row {
     display: flex;
@@ -179,18 +201,20 @@ body {
     align-items: center;
 }
 .boss-cards-select {
-    flex: 1;
+    flex: 0 0 auto;
     background: #0a0a0a;
-    color: var(--codec-green);
-    border: 1px solid rgba(0, 255, 100, 0.3);
+    color: var(--codec-red);
+    border: 1px solid var(--codec-red);
     font-family: var(--font-display);
     font-size: 0.55rem;
-    padding: 0.25rem 0.3rem;
+    padding: 0.4rem 0.4rem;
 }
-.boss-play-btn {
+.btn-codec.boss-play-btn {
     font-size: 0.65rem;
-    padding: 0.25rem 0.5rem;
+    padding: 0.5rem 1.1rem;
     flex-shrink: 0;
+    border-color: var(--codec-red);
+    color: var(--codec-red);
 }
 
 .player-card-name {
@@ -2941,6 +2965,44 @@ body {
     pointer-events: none;
 }
 
+/* Pallini cariche inline accanto all'etichetta azione (es. granate stage 5) */
+.hotspot-charges {
+    display: inline-flex;
+    gap: 3px;
+    align-items: center;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
+/* Riga con descrizione sempre visibile (azioni boss section) */
+.plancia-action-row--with-desc .hotspot-label-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.hotspot-label-line {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.hotspot-label {
+    color: var(--codec-green);
+    font-family: var(--font-display);
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}
+
+.hotspot-action-desc {
+    font-size: 0.57rem;
+    color: var(--text-secondary);
+    line-height: 1.3;
+    white-space: normal;
+}
+
 /* Bottone concentrazione in modalità attiva (seleziona token da ripristinare) */
 .plancia-circle-btn.conc-mode-active {
     border-color: var(--codec-yellow) !important;
@@ -3631,6 +3693,61 @@ body {
 }
 
 /* ============================================
+   BOSS DAMAGE POPUP
+   ============================================ */
+.boss-dmg-targets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: center;
+    margin-bottom: 0.5rem;
+}
+
+.boss-dmg-target.active {
+    border-color: var(--codec-red);
+    color: var(--codec-red);
+    background: rgba(255, 58, 58, 0.12);
+}
+
+.boss-dmg-enemy-name {
+    font-family: var(--font-ui);
+    font-size: 0.9rem;
+    color: var(--codec-red);
+    text-align: center;
+    letter-spacing: 0.08em;
+    margin-bottom: 0.4rem;
+}
+
+.boss-dmg-counter {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1.2rem;
+    margin: 0.6rem 0;
+}
+
+.boss-dmg-adj {
+    font-size: 1.4rem;
+    padding: 0.2rem 0.9rem !important;
+    line-height: 1;
+}
+
+.boss-dmg-amount {
+    font-family: var(--font-ui);
+    font-size: 2.2rem;
+    color: var(--codec-yellow);
+    min-width: 2.5rem;
+    text-align: center;
+}
+
+.boss-dmg-actions {
+    display: flex;
+    gap: 0.6rem;
+    justify-content: center;
+    margin-top: 0.4rem;
+}
+
+/* ============================================
    ALERT CAUSE POPUP
    ============================================ */
 .alert-cause-overlay {
@@ -3902,6 +4019,47 @@ body {
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
+}
+
+.rewards-barcode-hint {
+    font-family: var(--font-ui);
+    font-size: 0.78rem;
+    color: var(--codec-yellow);
+    margin-top: 0.5rem;
+    text-align: center;
+    line-height: 1.4;
+}
+
+.rewards-barcode-hint-wrong {
+    color: var(--codec-red);
+    margin-top: 0.4rem;
+}
+
+.rewards-barcode-prompt {
+    margin-top: 0.6rem;
+    font-size: 0.8rem;
+    opacity: 0.75;
+}
+
+.rewards-barcode-input {
+    font-family: var(--font-ui);
+    font-size: 1.4rem;
+    letter-spacing: 0.3em;
+    text-align: center;
+    background: transparent;
+    border: 1px solid var(--codec-green);
+    color: var(--codec-green);
+    padding: 0.3rem 0.6rem;
+    width: 6rem;
+    margin: 0.5rem auto 0;
+    display: block;
+    text-transform: uppercase;
+}
+
+.rewards-barcode-input:focus {
+    outline: none;
+    border-color: var(--codec-yellow);
+    color: var(--codec-yellow);
 }
 
 .rewards-confirm-btn {
