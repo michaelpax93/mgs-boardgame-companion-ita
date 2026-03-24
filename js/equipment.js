@@ -161,7 +161,7 @@ const EQUIPMENT = {
             name: "NASCONDITI",
             cost: 1,
             desc: "Se non sei in Linea di Vista di una guardia o una telecamera, sostituisci la tua miniatura con la miniatura della scatola di cartone. Nascosto: Le guardie e le telecamere ti considerano come se fossi una miniatura di una guardia. Sostituisci la scatola di cartone con la tua miniatura se: Salti una guardia; Entri nella Linea di Vista, o attraversi la Linea di Vista, di una guardia o una telecamera; Effettui una qualsiasi azione diversa da Movimento Furtivo, Scatto o Concentrazione. \"Una scatola di cartone?\": Se una guardia termina il suo movimento orientata verso di te e in una casella adiacente alla tua, sostituisci la scatola di cartone con la tua miniatura.",
-            sound: "audio/sfx/oggetto-scelta.wav",
+            sound: "audio/sfx/oggetto-togliere.wav",
         },
     },
 
@@ -269,7 +269,7 @@ const EQUIPMENT = {
             cost: 0,
             desc: "Usa in qualsiasi momento durante il tuo turno per ripristinare tutti i tuoi segnalini concentrazione. Poi scarta questa carta.",
             restoreConcentration: true,
-            sound: "audio/sfx/oggetto-preso.wav",
+            sound: "audio/sfx/diazepam-medicine.wav",
         },
     },
 
