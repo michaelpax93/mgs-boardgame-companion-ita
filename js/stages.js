@@ -25,7 +25,7 @@ const STAGES = [
         intro: "video/stage_01_intro.mp4",
         outro: "video/stage_01_outro.mp4",
         events: [
-            { id: "A", file: "video/stage_01_A.mp4", stopMusic: false },
+            { id: "A", file: "video/stage_01_A.mp4", stopMusic: false, requiredForOutro: true },
         ],
         disabledActions: ["concentrazione"],
         noConcentrationTokens: true,
@@ -58,10 +58,14 @@ const STAGES = [
         musicIntroVolume: 20,
         gameOverSounds: ["02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"],
         orderCards: 13,
+        events: [
+            { id: "A", sound: "audio/sfx/oggetto-preso.wav", requiredForOutro: true },
+            { id: "B", sound: "audio/sfx/oggetto-preso.wav" },
+        ],
         rewards: {
             always: ["001", "002"],
             conditional: [
-                { question: "Hai completato l'Obiettivo B?", equipmentIds: ["003"] },
+                { type: "event", eventId: "B", question: "Hai raccolto l'oggetto B?", equipmentIds: ["003"] },
             ],
         },
     },
@@ -74,9 +78,11 @@ const STAGES = [
         description: "Salvataggio del presidente della DARPA",
         intro: "video/stage_03_intro.mp4",
         outro: "video/stage_03_outro.mp4",
+        blockZoneChangeUntilEvent: "B",
         events: [
-            { id: "A", file: "video/stage_03_A.mp4", stopMusic: true },
-            { id: "B", file: "video/stage_03_B.mp4", stopMusic: true },
+            { id: "A", file: "video/stage_03_A.mp4", stopMusic: true, requiresZone: 0 },
+            { id: "B", file: "video/stage_03_B.mp4", stopMusic: true, requiresEvent: "A", requiresZone: 0 },
+            { id: "C", sound: "audio/sfx/oggetto-preso.wav", requiresEvent: "B", requiresZone: 1 },
         ],
         enemies: [3, 3],
         radioEnemies: [3, 3],
@@ -92,12 +98,11 @@ const STAGES = [
         rewards: {
             conditional: [
                 {
-                    exclusive: true,
-                    question: "Come hai completato lo stage?",
-                    options: [
-                        { label: "Hai sconfitto 12+ guardie nelle Celle di Detenzione", equipmentIds: ["004"] },
-                        { label: "Hai raggiunto il punto C e successivamente l'uscita",  equipmentIds: ["005"] },
-                    ],
+                    type: "event",
+                    eventId: "C",
+                    question: "Hai raggiunto il punto C?",
+                    equipmentIds: ["005"],
+                    elseEquipmentIds: ["004"],
                 },
             ],
         },
@@ -149,7 +154,7 @@ const STAGES = [
                 {
                     type: "barcode",
                     question: "Hai letto il capitolo Scenario 4 Conclusione?",
-                    prompt: "Indica cosa c'è scritto sotto il codice a barre della scatola del gioco (3 caratteri):",
+                    prompt: "Hai guardato dove ti ha detto Baker? Che equipaggiamento sblocchi?",
                     secret: "031",
                     equipmentIds: ["031"],
                 },
@@ -193,6 +198,9 @@ const STAGES = [
                 ],
             },
         ],
+        rewards: {
+            always: ["007"],
+        },
         bossTurnSections: [
             {
                 id: "granate",
@@ -215,12 +223,29 @@ const STAGES = [
         description: "Infiltrazione nel deposito testate nucleari",
         intro: "video/stage_06_intro.mp4",
         outro: "video/stage_06_outro.mp4",
+        enemies: [3, 3, 0],
+        radioEnemies: [3, 3, 0],
+        events: [
+            { id: "A", file: "video/stage_06_A.mp4", stopMusic: true, requiredForOutro: true, requiresZone: 2 },
+            { id: "B", sound: "audio/sfx/oggetto-preso.wav", requiredForOutro: true, grantEquipment: "E06B", requiresZone: 1 },
+            { id: "C", sound: "audio/sfx/oggetto-preso.wav", requiresEvent: "A", requiresZone: 2 },
+        ],
+        zoneRestrictions: {
+            0: { disabledItemTypes: ["arma a distanza", "esplosivo"] },
+        },
         musicIds: ["warhead", "intruder-2", "intruder-3"],
         musicLabels: ["Deposito nucleare - L1", "Deposito nucleare - B1", "Deposito nucleare - B2"],
         elevator: "audio/sfx/elevetor.mp3",
-        musicDuringIntro: false,
-        musicIntroDelay: 0,
+        musicDuringIntro: true,
+        musicIntroDelay: 61730,
         musicIntroVolume: 20,
+        musicIntroStartOffset: 100.29,
+        rewards: {
+            always: ["009"],
+            conditional: [
+                { type: "event", eventId: "C", equipmentIds: ["010"] },
+            ],
+        },
         gameOverSounds: ["02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"],
         orderCards: 18,
     },
@@ -229,15 +254,78 @@ const STAGES = [
         name: "NINJA CYBORG",
         type: "BOSS BATTLE",
         isBoss: true,
-        players: ["Snake"],
+        players: ["Snake", "Meryl"],
         description: "Scontro con il Cyborg Ninja",
         intro: "video/stage_07_intro.mp4",
         outro: "video/stage_07_outro.mp4",
         musicIds: ["duel"],
         musicLabels: ["Boss"],
+        variableActions: { "Snake": [], "Meryl": [] },
         musicDuringIntro: true,
         musicIntroDelay: 107000,
         musicIntroVolume: 20,
+        bossEnemies: [
+            {
+                id: "ninja",
+                name: "NINJA CYBORG",
+                hpByPlayerCount: { 1: 12, 2: 24 },
+                damageFrom: ["melee"],
+                attackSound: "audio/azioni/ninja/attacco-combo.wav",
+                movementSounds: [
+                    { file: "audio/azioni/ninja/movimento-furtivo.wav", repeat: 3 },
+                    "audio/azioni/ninja/scatto.wav",
+                ],
+                hitSequence: {
+                    hitSound:       "audio/sfx/colpo-fisico.wav",
+                    woundSound:     "audio/azioni/ninja/ferito.wav",
+                    woundPlusSound: "audio/azioni/ninja/ferito+.wav",
+                },
+                damageSounds: [
+                    { damage: 2, delay: 1000, sounds: ["audio/sfx/ninja/fammi ancora male.wav", "audio/sfx/ninja/stavo aspettando questo dolore.wav"] },
+                ],
+                equipReactions: {
+                    "003": { sound: "audio/sfx/ninja/ferito-chaff.wav", delay: 5000 },
+                },
+                koTriggersOutro: true,
+                stopMusicOnKo: true,
+                koSequence: {
+                    sound: "audio/azioni/ninja/concentrazione.wav",
+                    volume: 0.25,
+                    repeat: 6,
+                    overlap: 0.4,       // secondi di anticipo prima della fine per avviare il prossimo
+                    fadeOutLast: 1.2,   // secondi prima della fine dell'ultimo play per iniziare il fade out
+                    parallelAt: 2,
+                    parallelOffset: 0.8, // secondi prima della fine del play #parallelAt per avviare morte
+                    parallelSound: "audio/sfx/ninja/morte.wav",
+                },
+                specialButtons: [
+                    {
+                        id: "ombra",
+                        type: "counter",
+                        label: "OMBRA",
+                        max: 4,
+                        firstSound:  "audio/sfx/ninja/prendimi, su.wav",
+                        repeatSound: "audio/sfx/ninja/sono qui snake.wav",
+                        maxSound:    "audio/sfx/ninja/dove stai guardando.wav",
+                    },
+                ],
+                blockedAttackSounds: [
+                    "audio/sfx/ninja/no armi 1.wav",
+                    "audio/sfx/ninja/no armi 2.wav",
+                    "audio/sfx/ninja/no armi 3.wav",
+                ],
+                cards: [
+                    { label: "Ora possiamo combattere come guerrieri.",        file:  "audio/sfx/ninja/ora possiamo combattere come guerrieri.wav" },
+                    { label: "Solo un folle affida la sua vita ad un'arma.",   file:  "audio/sfx/ninja/solo un folle affida la sua vita ad un arma.wav" },
+                    { label: "Molto bene, Snake.",                             files: ["audio/sfx/ninja/bella mossa snake.wav", "audio/sfx/ninja/bel colpo snake.wav"] },
+                    { label: "Ora sì. Ora ricordo. Quel pugno.",               file:  "audio/sfx/ninja/lo ricordo quel pugno.wav" },
+                    { label: "Ricordi, Snake? La sensazione della battaglia. Lo schiantare di ossa e tendini.", file: "audio/sfx/ninja/ossa-tendini.wav" },
+                ],
+            },
+        ],
+        rewards: {
+            always: ["011"],
+        },
         gameOverSounds: ["02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"],
     },
     {

@@ -195,6 +195,30 @@ body {
     border-color: var(--codec-red);
     color: var(--codec-red);
 }
+.boss-counter-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+.boss-counter-label {
+    font-family: var(--font-display);
+    font-size: 0.65rem;
+    color: var(--codec-red);
+    letter-spacing: 0.08em;
+}
+.boss-counter-val {
+    font-family: var(--font-display);
+    font-size: 0.9rem;
+    color: var(--codec-red);
+    min-width: 1.2rem;
+    text-align: center;
+}
+.btn-codec.boss-counter-btn {
+    font-size: 0.75rem;
+    padding: 0.3rem 0.7rem;
+    border-color: var(--codec-red);
+    color: var(--codec-red);
+}
 .boss-cards-row {
     display: flex;
     gap: 0.3rem;
@@ -582,6 +606,12 @@ body {
 
 .btn-video {
     flex: 1;
+}
+
+.btn-video:disabled {
+    opacity: 0.35 !important;
+    cursor: default;
+    pointer-events: none;
 }
 
 .btn-video.playing {

@@ -141,6 +141,7 @@ const App = {
     equipmentConsumedState: {},
     equipmentFlagState: {},   // playerName → { equipId → { flagName: bool } }
     bossSectionChargeState: {}, // sectionId → remaining charges
+    eventClickedState: {},    // eventId → true (cliccato una volta)
 
     // Contatore azioni rumorose (noise:true) per giocatore nel turno corrente
     // Azzerato a inizio round. A fine turno del giocatore mostra popup promemoria dadi.
@@ -638,6 +639,9 @@ const App = {
 
         this._initAudioCtx();
         this.currentStage = stage;
+        // Annulla eventuali ripristini alert pendenti da stage precedente
+        this._eventStoppedMusic = false;
+        this._eventStoppedAlertState = null;
         this.stopAllAudio();
         this.lastMusicId = null;
         this.alertState = 'normal';
@@ -659,16 +663,10 @@ const App = {
         if (btnBack) btnBack.textContent = this.newGameMode ? '◄ MENU' : '◄ MISSIONI';
 
         const btnIntro = document.getElementById('btn-intro');
-        const btnOutro = document.getElementById('btn-outro');
         if (btnIntro) {
             const hasIntro = stage.intro && stage.intro.length > 0;
             btnIntro.disabled = !hasIntro;
             btnIntro.style.opacity = hasIntro ? '1' : '0.3';
-        }
-        if (btnOutro) {
-            const hasOutro = stage.outro && stage.outro.length > 0;
-            btnOutro.disabled = !hasOutro;
-            btnOutro.style.opacity = hasOutro ? '1' : '0.3';
         }
 
         // MEI LING: label "SALVATAGGIO" nel titolo ALERT visibile dal 2° stage in poi
@@ -689,6 +687,13 @@ const App = {
         }
 
         this.stopVideo();
+        this.eventClickedState = {};
+        this.introPlayed = false;
+        this.outroPlayed = false;
+        this.missileState = {}; // playerName → true se il missile è attivo sulla mappa
+        this._missilePendingPlayer = null;
+        this._eventStoppedMusic = false;
+        this.markerState = {};
         this.initEnemyState(stage);
         this.buildEventButtons(stage);
         this.buildMusicButtons(stage);
@@ -696,6 +701,7 @@ const App = {
         this.buildAlertSection(stage);
         this.buildTurnSection(stage, selectedPlayers);
         this.buildPlayerSidebar(stage);
+        this._updateOutroBtn();
         if (stage.startInAlert) {
             this.stagePlayers.forEach(p => {
                 if (this.markerState[p]) this.markerState[p].alert = true;
@@ -778,6 +784,9 @@ const App = {
             // Rimuove l'highlight quando il video finisce naturalmente
             this._autoStopListener = () => { this._autoStopListener = null; this.stopVideo(); };
             player.addEventListener('ended', this._autoStopListener, { once: true });
+            // Se il file non esiste o dà errore, sblocca comunque l'UI
+            this._videoErrorListener = () => { this._videoErrorListener = null; this.stopVideo(); };
+            player.addEventListener('error', this._videoErrorListener, { once: true });
         }
         if (stopBtn) stopBtn.style.display = '';
         document.getElementById('stage-active')?.classList.add('stage-video-active');
@@ -787,22 +796,62 @@ const App = {
         const container = document.getElementById('event-buttons');
         if (!container) return;
         const events = stage.events || [];
-        container.innerHTML = events.map(ev => `
-            <button class="btn-codec btn-video" id="btn-event-${ev.id}" onclick="App.playEvent('${ev.id}')">
-                <span class="btn-inner">▶ EVENTO ${ev.id}</span>
-            </button>
-        `).join('');
+        container.innerHTML = events.map(ev => {
+            const clicked = !!this.eventClickedState[ev.id];
+            const prefix = ev.file ? '▶ ' : '';
+            const style = clicked ? ' style="opacity:0.35"' : '';
+            return `<button class="btn-codec btn-video" id="btn-event-${ev.id}"
+                onclick="App.playEvent('${ev.id}')" ${clicked ? 'disabled' : ''}${style}>
+                <span class="btn-inner">${prefix}EVENTO ${ev.id}</span>
+            </button>`;
+        }).join('');
+        this._updateEventButtonsForTurn();
     },
 
     playEvent(id) {
         if (!this.currentStage) return;
         const ev = (this.currentStage.events || []).find(e => e.id === id);
-        if (!ev || !ev.file) return;
+        if (!ev) return;
+        // Segna evento come cliccato e disabilita il bottone
+        this.eventClickedState[id] = true;
+        const btn = document.getElementById(`btn-event-${id}`);
+        if (btn) { btn.disabled = true; btn.style.opacity = '0.35'; }
+        this._updateOutroBtn();
+        this._updateEventButtonsForTurn();
+        // Se questo evento sblocca il cambio zona, aggiorna la sidebar
+        if (this.currentStage?.blockZoneChangeUntilEvent === id) {
+            this.buildPlayerSidebar(this.currentStage);
+        }
         // Applica variazioni nemici associate all'evento
         const changes = this.currentStage.enemyEvents?.[id];
         if (changes) changes.forEach(c => this.updateEnemyCount(c.zone, c.delta));
+        // Evento solo-suono (nessun video)
+        if (!ev.file) {
+            if (ev.sound) {
+                const sfx = new Audio(ev.sound);
+                sfx.volume = 0.85;
+                sfx.play().catch(() => {});
+            }
+            // Equipaggiamento bonus al giocatore corrente
+            if (ev.grantEquipment) {
+                const player = this._activePlanciaPlayer() ?? this.stagePlayers?.[0];
+                if (player) {
+                    const slots = this.playerEquipment[player] || [];
+                    slots.push(ev.grantEquipment); // slot extra, non rimpiazza un null
+                    this.playerEquipment[player] = slots;
+                    const eq = EQUIPMENT[ev.grantEquipment];
+                    if (!this.equipmentConsumedState[player]) this.equipmentConsumedState[player] = {};
+                    if (eq?.charges != null) this.equipmentConsumedState[player][ev.grantEquipment] = eq.charges;
+                    else if (eq?.consumable) this.equipmentConsumedState[player][ev.grantEquipment] = false;
+                    this._refreshEquipmentPanel(player);
+                }
+            }
+            return;
+        }
         if (ev.stopMusic) {
             this._eventMusicRestore = null;
+            this._eventStoppedMusic = true;
+            this._eventStoppedAlertState = this.alertState; // 'normal'|'alert'|'evasion'
             this.stopMusic();
             this.stopAlertSystem();
         } else if (this.musicLoop && this.musicLoop.isPlaying()) {
@@ -811,11 +860,11 @@ const App = {
                 this.musicLoop.setVolume(ev.musicEvent / 100);
             }
         }
-        this.setActiveVideoBtn(document.getElementById(`btn-event-${id}`));
+        this.setActiveVideoBtn(btn);
         this.playVideo(ev.file);
     },
 
-    _afterIntroEnd() {
+    _afterIntroEnd(skipDelay = false) {
         if (this.musicIntroTimer) {
             const p = document.getElementById('video-player');
             if (p) p.removeEventListener('timeupdate', this.musicIntroTimer);
@@ -832,7 +881,7 @@ const App = {
             this.fadeMusicToNormalVolume();
             this._startSfxOnMusicStart();
         } else if (!this.musicLoop || !this.musicLoop.isPlaying()) {
-            this.playFirstMusic();
+            this.playFirstMusic(skipDelay);
         }
     },
 
@@ -955,7 +1004,7 @@ const App = {
             const onTimeUpdate = () => {
                 if (player && player.currentTime >= triggerTime) {
                     player.removeEventListener('timeupdate', onTimeUpdate);
-                    this.playMusicAtVolume(ids[0], introVolume);
+                    this.playMusicAtVolume(ids[0], introVolume, stage.musicIntroStartOffset ?? null);
                 }
             };
             this.musicIntroTimer = onTimeUpdate; // tenuto per poterlo rimuovere in stopVideo
@@ -976,17 +1025,36 @@ const App = {
         this.playVideo(stage.intro);
     },
 
-    playFirstMusic() {
+    playFirstMusic(skipDelay = false) {
         if (!this.currentStage) return;
         const ids = this.currentStage.musicIds || [];
-        if (ids.length > 0) this.playMusic(ids[0]);
-        this._startSfxOnMusicStart();
+        if (!ids.length) return;
+        const delay = skipDelay ? 0 : (this.currentStage.musicDelay ?? 0);
+        const doPlay = () => {
+            if (!this.currentStage) return;
+            const offset = this.currentStage.musicStartOffset ?? null;
+            if (offset != null) {
+                const volume = (document.getElementById('music-volume')?.value || 25) / 100;
+                this.playMusicAtVolume(ids[0], volume, offset);
+            } else {
+                this.playMusic(ids[0]);
+            }
+            this._startSfxOnMusicStart();
+        };
+        if (delay > 0) {
+            setTimeout(doPlay, delay);
+        } else {
+            doPlay();
+        }
     },
 
     playIntro() {
         if (!this.currentStage) return;
         this.stopAllAudio();
-        this.setActiveVideoBtn(document.getElementById('btn-intro'));
+        this.introPlayed = true;
+        const btnIntro = document.getElementById('btn-intro');
+        if (btnIntro) { btnIntro.disabled = true; btnIntro.style.opacity = '0.3'; }
+        this.setActiveVideoBtn(btnIntro);
         if (this.currentStage.mantisIntro) {
             const player = document.getElementById('video-player');
             if (player && this._introEndedListener) {
@@ -999,9 +1067,42 @@ const App = {
         this.playVideo(this.currentStage.intro);
     },
 
+    _updateEventButtonsForTurn() {
+        const isPlayerTurn = this.turnPhase === 'players' &&
+            (this.stagePlayers.length === 1 || this.playerSubPhase === 'active');
+        const activePlayer = this._activePlanciaPlayer();
+        const activeZone   = activePlayer != null ? (this.playerZoneState[activePlayer] ?? 0) : null;
+        (this.currentStage?.events || []).forEach(ev => {
+            if (this.eventClickedState[ev.id]) return;
+            const prereqMet = !ev.requiresEvent || !!this.eventClickedState[ev.requiresEvent];
+            const zoneMet   = ev.requiresZone == null || activeZone === ev.requiresZone;
+            const btn = document.getElementById(`btn-event-${ev.id}`);
+            if (!btn) return;
+            const enabled = isPlayerTurn && prereqMet && zoneMet;
+            btn.disabled = !enabled;
+            btn.style.opacity = enabled ? '1' : '0.35';
+        });
+    },
+
+    _updateOutroBtn() {
+        const stage = this.currentStage;
+        if (!stage) return;
+        const required = (stage.events || []).filter(e => e.requiredForOutro);
+        const allDone = required.every(e => !!this.eventClickedState[e.id]);
+        const hasOutro = stage.outro && stage.outro.length > 0;
+        const enabled = hasOutro && allDone && !this.outroPlayed && !stage.isBoss;
+        const btn = document.getElementById('btn-outro');
+        if (btn) {
+            btn.disabled = !enabled;
+            btn.style.opacity = enabled ? '1' : '0.3';
+        }
+    },
+
     playOutro() {
         if (!this.currentStage) return;
         this.stopAllAudio();
+        this.outroPlayed = true;
+        this._updateOutroBtn();
         this.setActiveVideoBtn(document.getElementById('btn-outro'));
         this._outroPlaying = this.newGameMode;
         this.playVideo(this.currentStage.outro);
@@ -1051,14 +1152,27 @@ const App = {
     _showRewardsPopup(stage, nextStage) {
         this._rewardsPendingNextStage = nextStage;
         this._rewardsConditionalState = {};
+        // Pre-popola automaticamente i condizionali
+        (stage.rewards.conditional || []).forEach((cond, i) => {
+            if (cond.type === 'event') {
+                this._rewardsConditionalState[i] = !!this.eventClickedState[cond.eventId];
+            }
+        });
 
         const popup = document.getElementById('rewards-popup');
         document.getElementById('rewards-popup-stage').textContent =
             `STAGE ${String(stage.id).padStart(2, '0')} — ${stage.name}`;
 
-        // Equipaggiamento sempre sbloccato
+        // Equipaggiamento sempre sbloccato + condizionali event auto-risolti
         const alwaysList = document.getElementById('rewards-always-list');
-        alwaysList.innerHTML = (stage.rewards.always || []).map(id => {
+        const eventIds = (stage.rewards.conditional || [])
+            .filter(cond => cond.type === 'event')
+            .flatMap(cond => {
+                const obtained = !!this.eventClickedState[cond.eventId];
+                return obtained ? (cond.equipmentIds || []) : (cond.elseEquipmentIds || []);
+            });
+        const allIds = [...(stage.rewards.always || []), ...eventIds];
+        alwaysList.innerHTML = allIds.map(id => {
             const eq = EQUIPMENT[id];
             return `<div class="rewards-equipment-item">
                 <span class="rewards-eq-id">${id}</span>
@@ -1070,6 +1184,7 @@ const App = {
         const condSection = document.getElementById('rewards-conditional-section');
         const conditionals = stage.rewards.conditional || [];
         condSection.innerHTML = conditionals.map((cond, i) => {
+            if (cond.type === 'event') return '';
             if (cond.exclusive && cond.options) {
                 const optionsHtml = cond.options.map((opt, oi) => {
                     const eqHtml = opt.equipmentIds.map(id => {
@@ -1130,6 +1245,26 @@ const App = {
                         </div>
                     </div>`;
             }
+            // Evento auto-risolto: mostra risultato senza interazione
+            if (cond.type === 'event') {
+                const obtained = !!this.eventClickedState[cond.eventId];
+                const activeIds = obtained ? (cond.equipmentIds || []) : (cond.elseEquipmentIds || []);
+                const eqHtml = activeIds.length
+                    ? activeIds.map(id => {
+                        const eq = EQUIPMENT[id];
+                        return `<div class="rewards-equipment-item rewards-equipment-bonus">
+                            <span class="rewards-eq-id">${id}</span>
+                            <span class="rewards-eq-name">${eq ? eq.name : id}</span>
+                        </div>`;
+                    }).join('')
+                    : `<div class="rewards-popup-question" style="opacity:0.5">Non completato — nessun equipaggiamento bonus.</div>`;
+                return `<div class="rewards-popup-divider"></div>
+                    <div class="rewards-cond-block" id="rewards-cond-${i}">
+                        <div class="rewards-popup-section-label">OBIETTIVO OPZIONALE</div>
+                        <div class="rewards-popup-question">${cond.question}</div>
+                        ${eqHtml}
+                    </div>`;
+            }
             // Fallback: YES/NO classico
             return `<div class="rewards-popup-divider"></div>
                 <div class="rewards-cond-block" id="rewards-cond-${i}">
@@ -1165,9 +1300,12 @@ const App = {
         const btn = document.getElementById('rewards-confirm-btn');
         if (!btn) return;
         const conditionals = this.currentStage?.rewards?.conditional || [];
-        const blocked = conditionals.some((cond, i) =>
-            cond.exclusive && cond.options && this._rewardsConditionalState[i] === undefined
-        );
+        const blocked = conditionals.some((cond, i) => {
+            const state = this._rewardsConditionalState[i];
+            if (cond.exclusive && cond.options && state === undefined) return true;
+            if (cond.type === 'barcode' && state !== true) return true;
+            return false;
+        });
         btn.disabled = blocked;
         btn.style.opacity = blocked ? '0.35' : '';
     },
@@ -1187,6 +1325,9 @@ const App = {
             if (value) {
                 if (noHint) noHint.style.display = 'none';
                 if (wrap)   wrap.style.display = '';
+                // Una volta scelto SÌ, non si può tornare indietro
+                const noBtn = document.getElementById(`rewards-no-${condIndex}`);
+                if (noBtn) { noBtn.disabled = true; noBtn.style.opacity = '0.35'; }
             } else {
                 if (noHint) noHint.style.display = '';
                 if (wrap)   wrap.style.display = 'none';
@@ -1198,6 +1339,7 @@ const App = {
                 const wrongHint = document.getElementById(`rewards-barcode-wrong-hint-${condIndex}`);
                 if (wrongHint) wrongHint.style.display = 'none';
             }
+            this._updateRewardsConfirmBtn();
             return;
         }
 
@@ -1227,6 +1369,7 @@ const App = {
             if (wrongHint) wrongHint.style.display = val.length === 3 ? '' : 'none';
         }
         this._rewardsConditionalState[condIndex] = match;
+        this._updateRewardsConfirmBtn();
     },
 
     _rewardsConfirm() {
@@ -1244,6 +1387,9 @@ const App = {
                     (opt?.equipmentIds || []).forEach(id => {
                         if (!pool.includes(id)) pool.push(id);
                     });
+                } else if (cond.type === 'event') {
+                    const ids = val ? (cond.equipmentIds || []) : (cond.elseEquipmentIds || []);
+                    ids.forEach(id => { if (!pool.includes(id)) pool.push(id); });
                 } else if (!cond.exclusive && val === true) {
                     (cond.equipmentIds || []).forEach(id => {
                         if (!pool.includes(id)) pool.push(id);
@@ -1291,11 +1437,15 @@ const App = {
                 player.removeEventListener('ended', this._autoStopListener);
                 this._autoStopListener = null;
             }
+            if (this._videoErrorListener) {
+                player.removeEventListener('error', this._videoErrorListener);
+                this._videoErrorListener = null;
+            }
             if (this._introEndedListener) {
                 player.removeEventListener('ended', this._introEndedListener);
                 this._introEndedListener = null;
-                // Intro interrotta manualmente: avvia ambient/musica se non già in corso
-                setTimeout(() => this._afterIntroEnd(), 0);
+                // Intro interrotta manualmente: avvia ambient/musica se non già in corso (senza delay)
+                setTimeout(() => this._afterIntroEnd(true), 0);
             }
             if (this._outroPlaying) {
                 this._outroPlaying = false;
@@ -1331,6 +1481,29 @@ const App = {
         if (this._eventMusicRestore !== null) {
             if (this.musicLoop) this.musicLoop.setVolume(this._eventMusicRestore);
             this._eventMusicRestore = null;
+        }
+        if (this._eventStoppedMusic) {
+            this._eventStoppedMusic = false;
+            const savedAlert = this._eventStoppedAlertState || 'normal';
+            this._eventStoppedAlertState = null;
+            if (savedAlert === 'alert' || savedAlert === 'evasion') {
+                setTimeout(() => {
+                    this.triggerAlert();
+                    if (savedAlert === 'evasion') this.triggerEvasion();
+                }, 100);
+            } else {
+                setTimeout(() => {
+                    const ids = this.currentStage?.musicIds || [];
+                    if (!ids.length) return;
+                    // Usa l'ultima musica suonata se ancora valida, altrimenti la prima della zona corrente
+                    const activePlayer = this._activePlanciaPlayer()
+                        ?? (this.stagePlayers?.length === 1 ? this.stagePlayers[0] : null);
+                    const currentZone = activePlayer != null ? (this.playerZoneState[activePlayer] ?? 0) : 0;
+                    const zoneId = ids[currentZone] ?? ids[0];
+                    const volume = (document.getElementById('music-volume')?.value || 25) / 100;
+                    this.playMusicAtVolume(zoneId, volume);
+                }, 100);
+            }
         }
     },
 
@@ -1413,12 +1586,18 @@ const App = {
         }
     },
 
-    playMusicAtVolume(id, volume) {
+    playMusicAtVolume(id, volume, startOffset = null) {
         const track = CONFIG.music[id];
         if (!track) return;
         this.stopMusic();
         this.lastMusicId = id;
-        this.musicLoop = this.createSeamlessLoop(track.file, volume, track.loopOverlap, this._cfgLoopPoints(track));
+        let loopPoints = this._cfgLoopPoints(track);
+        if (startOffset != null) {
+            loopPoints = loopPoints
+                ? { ...loopPoints, introStart: startOffset }
+                : { introStart: startOffset, start: 0, end: 0 };
+        }
+        this.musicLoop = this.createSeamlessLoop(track.file, volume, track.loopOverlap, loopPoints);
         this.musicLoop.play();
         this._startSfxOnMusicStart();
         const controls = document.getElementById('music-controls');
@@ -1430,6 +1609,22 @@ const App = {
     playMusic(id) {
         const normalVolume = (document.getElementById('music-volume')?.value || 25) / 100;
         const stage = this.currentStage;
+
+        // Sincronizza la zona del giocatore attivo con la zona musicale scelta
+        const zoneIndex = (stage?.musicIds || []).indexOf(id);
+        if (zoneIndex >= 0) {
+            const activePlayer = this._activePlanciaPlayer()
+                ?? (this.stagePlayers?.length === 1 ? this.stagePlayers[0] : null);
+            if (activePlayer) {
+                this.playerZoneState[activePlayer] = zoneIndex;
+                // Aggiorna il select nella card senza ricostruire tutto
+                const sel = document.querySelector(`.zone-select[onchange*="${activePlayer}"]`);
+                if (sel) sel.value = zoneIndex;
+                if (stage?.zoneRestrictions) this._refreshEquipmentPanel(activePlayer);
+                this._updateEventButtonsForTurn();
+            }
+        }
+
         const isSwitching = this.musicLoop && this.musicLoop.isPlaying();
         if (isSwitching && stage && stage.elevator) {
             this.stopMusic();
@@ -1558,6 +1753,7 @@ const App = {
         // - consumable: true/false (disabilitato dopo 1 uso)
         // - charges: N rimanenti (disabilitato quando raggiunge 0)
         // - altrimenti: null (nessun consumo)
+        this.eventClickedState = {};
         this.equipmentConsumedState = {};
         this.stagePlayers.forEach(p => {
             this.equipmentConsumedState[p] = {};
@@ -1766,6 +1962,13 @@ const App = {
 
             // Supporto multi-azione (es. C-4) e singola azione
             const actionList = eq.actions || (eq.action ? [eq.action] : []);
+            // Restrizioni di zona (es. no armi a distanza/esplosivi in zona L1)
+            const playerZone = this.playerZoneState[playerName] ?? 0;
+            const zoneRestr  = this.currentStage?.zoneRestrictions?.[playerZone];
+            const zoneBlocked = zoneRestr?.disabledItemTypes
+                ? zoneRestr.disabledItemTypes.includes(eq.itemType)
+                : false;
+
             const disabledList = actionList.map(a => {
                 const chargeNeeded = a.usesCharge && eq.charges != null;
                 const remaining    = typeof consumed[id] === 'number' ? consumed[id] : (eq.charges ?? 0);
@@ -1774,7 +1977,7 @@ const App = {
                 const flagBlocked  = a.requiresFlag
                     ? !(this.equipmentFlagState[playerName]?.[id]?.[a.requiresFlag])
                     : false;
-                return (eq.consumable && isExhausted) || (a.usesCharge && isExhausted) || noCharge || noTokens || flagBlocked;
+                return (eq.consumable && isExhausted) || (a.usesCharge && isExhausted) || noCharge || noTokens || flagBlocked || zoneBlocked;
             });
             const allDisabled = disabledList.every(Boolean);
             const btnsHtml = actionList.map((a, ai) => {
@@ -1815,14 +2018,44 @@ const App = {
         // Spendi token
         if (a.cost > 0) this.spendTokens(a.cost, playerName);
 
-        // Suono azione (con eventuale followUp per stage specifico)
-        if (a.sound) {
+        // Suono azione missile: sequenza sparato→movimento o solo movimento
+        if (a.category === 'missile') {
+            const missileAttivo = !!this.missileState[playerName];
+            const playMovimento = () => {
+                const mov = new Audio('audio/sfx/missile-movimento.wav');
+                mov.volume = 0.85;
+                mov.addEventListener('ended', () => this._showMissilePopup(playerName), { once: true });
+                mov.play().catch(() => this._showMissilePopup(playerName));
+            };
+            if (!missileAttivo) {
+                const sparato = new Audio('audio/sfx/missile-sparato.wav');
+                sparato.volume = 0.85;
+                sparato.addEventListener('ended', playMovimento, { once: true });
+                sparato.play().catch(playMovimento);
+            } else {
+                playMovimento();
+            }
+        // Suono azione normale (con eventuale followUp per stage specifico o reazione boss)
+        } else if (a.sound) {
             const followUp = a.followUpByStage?.[this.currentStage?.id];
+            const bossReaction = (() => {
+                if (!this.currentStage?.isBoss) return null;
+                for (const e of (this.currentStage.bossEnemies || [])) {
+                    const r = e.equipReactions?.[equipId];
+                    if (r && (this.bossHpState?.[e.id] ?? 0) > 0) return r;
+                }
+                return null;
+            })();
             if (followUp) {
                 const audio = new Audio(a.sound);
                 audio.volume = 0.85;
                 audio.addEventListener('ended', () => this.playSfx(followUp), { once: true });
                 audio.play().catch(() => {});
+            } else if (bossReaction) {
+                const reactionSound = typeof bossReaction === 'string' ? bossReaction : bossReaction.sound;
+                const reactionDelay = typeof bossReaction === 'object' ? (bossReaction.delay ?? 0) : 0;
+                this._playActionSound(a.sound);
+                setTimeout(() => this.playSfx(reactionSound), reactionDelay);
             } else {
                 this._playActionSound(a.sound);
             }
@@ -1830,7 +2063,9 @@ const App = {
 
         // Aggiorna stato consumi
         const consumed = this.equipmentConsumedState[playerName] || {};
-        if (a.usesCharge && eq.charges != null) {
+        // Per i missili: consuma carica solo al lancio (quando non c'è già un missile attivo)
+        const missileAlreadyActive = a.category === 'missile' && !!this.missileState[playerName];
+        if (a.usesCharge && eq.charges != null && !missileAlreadyActive) {
             const current = typeof consumed[equipId] === 'number' ? consumed[equipId] : eq.charges;
             consumed[equipId] = Math.max(0, current - 1);
         } else if (eq.consumable) {
@@ -1849,24 +2084,119 @@ const App = {
         }
 
         // Cura
-        if (a.heal) this.adjustHp(playerName, a.heal);
+        if (a.heal) this.adjustHp(playerName, a.heal, false, true);
 
-        // Se è un attacco, mostra popup risultato
-        if (a.attack) {
+        // Ripristino segnalini concentrazione
+        if (a.restoreConcentration && this.concentrationState[playerName]) {
+            this.concentrationState[playerName] = this.concentrationState[playerName].map(() => true);
+            this.concentrationState[playerName].forEach((_, i) => {
+                const btn = document.getElementById(`conc-btn-${playerName}-${i}`);
+                if (btn) { btn.classList.add('available'); btn.classList.remove('spent'); btn.disabled = false; }
+            });
+        }
+
+        // Se l'azione è rumorosa (alertImmediate) e ci sono guardie nella zona, triggera alert
+        // Eccezione: i missili fanno rumore all'impatto, non al lancio (gestito in _missileObstacle)
+        if (a.alertImmediate && a.category !== 'missile' && !this.currentStage?.isBoss) {
+            const zone = this.playerZoneState[playerName] ?? 0;
+            if ((this.enemyState[zone] ?? 0) > 0) {
+                this.triggerAlert();
+            }
+        }
+
+        // Se è un attacco, mostra popup risultato (i missili gestiscono il popup in _missileHitEnemy)
+        if (a.attack && a.category !== 'missile') {
             this.showAttackResultPopup(playerName, `eq-${equipId}`, a);
         }
 
         this._refreshEquipmentPanel(playerName);
     },
 
+    _showMissilePopup(playerName) {
+        if (this._missilePendingPlayer) return; // popup già aperto, ignora doppio trigger
+        this._missilePendingPlayer = playerName;
+        const text = document.getElementById('missile-popup-text');
+        const btns = document.getElementById('missile-popup-buttons');
+        if (text) text.innerHTML = 'Il missile incontra<br>un ostacolo?';
+        if (btns) btns.innerHTML = `
+            <button class="btn-codec enemy-phase-confirm-btn" onclick="App._missileObstacle(true)">
+                <span class="btn-inner">✓ SÌ</span>
+            </button>
+            <button class="btn-codec enemy-phase-confirm-btn" onclick="App._missileObstacle(false)">
+                <span class="btn-inner">✕ NO</span>
+            </button>`;
+        const popup = document.getElementById('missile-popup');
+        if (popup) popup.style.display = 'flex';
+    },
+
+    _missileObstacle(hit) {
+        const player = this._missilePendingPlayer;
+        if (!player) return;
+        if (!hit) {
+            document.getElementById('missile-popup').style.display = 'none';
+            this._missilePendingPlayer = null;
+            this.missileState[player] = true;
+            return;
+        }
+        // Ostacolo: esplode → alert → chiedi se colpisce qualcuno
+        this.missileState[player] = false;
+        const sfx = new Audio('audio/sfx/esplosione.wav');
+        sfx.volume = 0.85;
+        sfx.play().catch(() => {});
+        if (!this.currentStage?.isBoss) {
+            const zone = this.playerZoneState[player] ?? 0;
+            if ((this.enemyState[zone] ?? 0) > 0) {
+                this.triggerAlert();
+                // Imposta il marker ! sul giocatore (come fa selectAlertCause)
+                if (this.markerState[player]) {
+                    this.markerState[player].alert = true;
+                    this.markerState[player].inter = false;
+                    ['alert', 'inter'].forEach(m => {
+                        const btn = document.getElementById(`marker-${m}-${player}`);
+                        if (btn) btn.classList.toggle('active', !!this.markerState[player][m]);
+                    });
+                }
+            }
+        }
+        const text = document.getElementById('missile-popup-text');
+        const btns = document.getElementById('missile-popup-buttons');
+        if (text) text.innerHTML = 'Il missile colpisce<br>qualcuno?';
+        if (btns) btns.innerHTML = `
+            <button class="btn-codec enemy-phase-confirm-btn" onclick="App._missileHitEnemy(true)">
+                <span class="btn-inner">✓ SÌ</span>
+            </button>
+            <button class="btn-codec enemy-phase-confirm-btn" onclick="App._missileHitEnemy(false)">
+                <span class="btn-inner">✕ NO</span>
+            </button>`;
+    },
+
+    _missileHitEnemy(hit) {
+        document.getElementById('missile-popup').style.display = 'none';
+        const player = this._missilePendingPlayer;
+        this._missilePendingPlayer = null;
+        if (!player) return;
+        if (hit && !this.currentStage?.isBoss) {
+            const nikitaAction = EQUIPMENT['E06B']?.action;
+            if (nikitaAction) this.showAttackResultPopup(player, 'eq-E06B', nikitaAction);
+        }
+    },
+
     _refreshEquipmentPanel(playerName) {
-        const el = document.getElementById(`eq-panel-${playerName}`);
-        if (!el) return;
         const newHtml = this._buildEquipmentPanel(playerName);
-        if (newHtml) {
-            const tmp = document.createElement('div');
-            tmp.innerHTML = newHtml.trim();
-            el.replaceWith(tmp.firstElementChild);
+        const el = document.getElementById(`eq-panel-${playerName}`);
+        if (el) {
+            if (newHtml) {
+                const tmp = document.createElement('div');
+                tmp.innerHTML = newHtml.trim();
+                el.replaceWith(tmp.firstElementChild);
+            }
+        } else if (newHtml) {
+            // Panel non ancora nel DOM (giocatore partito senza equip): inietta nel container
+            const col = document.getElementById(`eq-col-${playerName}`);
+            if (col) {
+                col.innerHTML = newHtml;
+                col.style.display = '';
+            }
         }
     },
 
@@ -2546,7 +2876,7 @@ const App = {
                 content.innerHTML = headerHtml
                     + `<div class="plancia-with-eq">
                         ${planciaHtml}
-                        ${eqHtml ? `<div class="plancia-eq-col">${eqHtml}</div>` : ''}
+                        <div class="plancia-eq-col" id="eq-col-${activePlayer}" style="${eqHtml ? '' : 'display:none'}">${eqHtml}</div>
                     </div>`
                     + `<div class="plancia-conc-row">
                         <div class="turn-panel-col-header">SEGNALINI CONCENTRAZIONE</div>
@@ -2559,9 +2889,7 @@ const App = {
             } else {
                 // Layout a colonne (personaggi senza plancia)
                 const merylSharedHtml = this._buildMerylSharedAbilityHtml(activePlayer);
-                const eqColHtml = eqHtml
-                    ? `<div class="turn-panel-col turn-panel-eq-col">${eqHtml}</div>`
-                    : '';
+                const eqColHtml = `<div class="turn-panel-col turn-panel-eq-col" id="eq-col-${activePlayer}" style="${eqHtml ? '' : 'display:none'}">${eqHtml}</div>`;
                 content.innerHTML = headerHtml + `
                 <div class="turn-panel">
                     <div class="turn-panel-col">
@@ -2616,6 +2944,7 @@ const App = {
                 </div>
                 ${phasesHtml}`;
         }
+        this._updateEventButtonsForTurn();
     },
 
     selectTurnPlayer(index) {
@@ -2910,7 +3239,9 @@ const App = {
         // Inizializza HP nemici boss
         this.bossHpState           = this.bossHpState    || {};
         this.bossMaxHpState        = this.bossMaxHpState || {};
-        this._bossCardFollowUpUsed = {};
+        this._bossCardFollowUpUsed  = {};
+        this._bossSpecialBtnUsed    = {};
+        this._bossCounterFirstUsed  = {};
         this._ocelotZeroStreak     = 0;
         const bossEnemies = stage.bossEnemies || [];
         const playerCount = players.length;
@@ -2967,8 +3298,11 @@ const App = {
         const currentZone = (this.playerZoneState && this.playerZoneState[playerName]) || 0;
         const isBoss    = stage?.isBoss || false;
         const multiZone = !isBoss && stage && stage.enemies && stage.enemies.length > 1;
+        const zoneBlocked = stage?.blockZoneChangeUntilEvent
+            && !this.eventClickedState[stage.blockZoneChangeUntilEvent];
         const zoneHtml = multiZone ? `
-            <select class="zone-select" onchange="App.setPlayerZone('${playerName}', this.value)">
+            <select class="zone-select" onchange="App.setPlayerZone('${playerName}', this.value)"
+                ${zoneBlocked ? 'disabled style="opacity:0.35"' : ''}>
                 ${stage.enemies.map((_, i) => {
                     const label = (stage.musicLabels && stage.musicLabels[i])
                         ? stage.musicLabels[i].toUpperCase() : `ZONA ${i + 1}`;
@@ -3079,6 +3413,19 @@ const App = {
             const movementBtn = e.movementSounds?.length
                 ? `<button class="btn-codec boss-attack-btn" onclick="App.playBossMovement('${e.id}')">▶ MOVIMENTO</button>`
                 : '';
+            const specialBtns = (e.specialButtons || []).map(sb => {
+                if (sb.type === 'counter') {
+                    const count = this._bossSpecialBtnUsed[`${e.id}-${sb.id}`] ?? 0;
+                    const atMax = count >= sb.max;
+                    return `<span class="boss-counter-row">
+                        <span class="boss-counter-label">${sb.label}</span>
+                        <button class="btn-codec boss-counter-btn" onclick="App.bossBtnCounterAdj('${e.id}','${sb.id}',-1)">−</button>
+                        <span class="boss-counter-val" id="boss-counter-${e.id}-${sb.id}">${count}</span>
+                        <button class="btn-codec boss-counter-btn" onclick="App.bossBtnCounterAdj('${e.id}','${sb.id}',1)" ${atMax ? 'disabled' : ''}>+</button>
+                    </span>`;
+                }
+                return `<button class="btn-codec boss-attack-btn" onclick="App.playBossSpecialBtn('${e.id}','${sb.id}')">▶ ${sb.label}</button>`;
+            }).join('');
             const cardsHtml = (e.cards && e.cards.length)
                 ? `<div class="boss-cards-row">
                        <select class="boss-cards-select" id="boss-cards-select-${e.id}">
@@ -3090,7 +3437,7 @@ const App = {
                 : '';
             return `<div class="boss-turn-block">
                 <div class="boss-turn-name" style="color:var(--codec-red)">${e.name}</div>
-                <div style="display:flex;gap:0.5rem;flex-wrap:wrap">${attackBtn}${movementBtn}</div>
+                <div style="display:flex;gap:0.5rem;flex-wrap:wrap">${attackBtn}${movementBtn}${specialBtns}</div>
                 ${cardsHtml}
             </div>`;
         }).join('');
@@ -3128,8 +3475,60 @@ const App = {
         const enemy = this.currentStage?.bossEnemies?.find(e => e.id === enemyId);
         const sounds = enemy?.movementSounds;
         if (!sounds?.length) return;
-        const file = sounds[Math.floor(Math.random() * sounds.length)];
-        this.playSfx(file);
+        const entry = sounds[Math.floor(Math.random() * sounds.length)];
+        const file   = typeof entry === 'string' ? entry : entry.file;
+        const repeat = typeof entry === 'object' ? (entry.repeat ?? 1) : 1;
+        const playN = (n) => {
+            if (n <= 0) return;
+            const a = new Audio(file);
+            a.volume = 0.85;
+            if (n > 1) a.addEventListener('ended', () => playN(n - 1), { once: true });
+            a.play().catch(() => {});
+        };
+        playN(repeat);
+    },
+
+    bossBtnCounterAdj(enemyId, btnId, delta) {
+        const enemy = this.currentStage?.bossEnemies?.find(e => e.id === enemyId);
+        const btn   = enemy?.specialButtons?.find(b => b.id === btnId);
+        if (!btn) return;
+        const key     = `${enemyId}-${btnId}`;
+        const current = this._bossSpecialBtnUsed[key] ?? 0;
+        const next    = Math.max(0, Math.min(btn.max ?? Infinity, current + delta));
+        if (next === current) return;
+        this._bossSpecialBtnUsed[key] = next;
+
+        // Aggiorna display
+        const valEl = document.getElementById(`boss-counter-${enemyId}-${btnId}`);
+        if (valEl) valEl.textContent = next;
+        // Aggiorna stato disabled del tasto +
+        const plusBtn = valEl?.nextElementSibling;
+        if (plusBtn) plusBtn.disabled = next >= (btn.max ?? Infinity);
+
+        // Audio solo su incremento
+        if (delta > 0) {
+            let sound = null;
+            const firstKey = `${enemyId}-${btnId}-first`;
+            if (next >= btn.max)                            sound = btn.maxSound;
+            else if (next === 1 && !this._bossCounterFirstUsed[firstKey]) sound = btn.firstSound;
+            else                                            sound = btn.repeatSound;
+            if (next === 1) this._bossCounterFirstUsed[firstKey] = true;
+            if (sound) { const sfx = new Audio(sound); sfx.volume = 0.85; sfx.play().catch(() => {}); }
+        }
+    },
+
+    playBossSpecialBtn(enemyId, btnId) {
+        const enemy = this.currentStage?.bossEnemies?.find(e => e.id === enemyId);
+        const btn   = enemy?.specialButtons?.find(b => b.id === btnId);
+        if (!btn) return;
+        const key     = `${enemyId}-${btnId}`;
+        const used    = !!this._bossSpecialBtnUsed[key];
+        const file    = used ? btn.repeatSound : btn.firstSound;
+        this._bossSpecialBtnUsed[key] = true;
+        if (!file) return;
+        const sfx = new Audio(file);
+        sfx.volume = 0.85;
+        sfx.play().catch(() => {});
     },
 
     playBossEnemyAttack(enemyId, attackIndex) {
@@ -3236,7 +3635,10 @@ const App = {
         const idx = sel ? parseInt(sel.value) : NaN;
         if (isNaN(idx) || !enemy.cards[idx]) return;
         const card = enemy.cards[idx];
-        const audio = new Audio(card.file);
+        const src = card.files
+            ? card.files[Math.floor(Math.random() * card.files.length)]
+            : card.file;
+        const audio = new Audio(src);
         audio.volume = 1.0;
         if (card.followUp) {
             const key = `${enemyId}-${idx}`;
@@ -3250,7 +3652,7 @@ const App = {
         audio.play().catch(e => console.warn(e.message));
     },
 
-    adjustBossHp(enemyId, delta) {
+    adjustBossHp(enemyId, delta, playSounds = true) {
         if (!this.bossHpState || this.bossHpState[enemyId] === undefined) return;
         const prev = this.bossHpState[enemyId];
         this.bossHpState[enemyId] = Math.max(0, this.bossHpState[enemyId] + delta);
@@ -3261,27 +3663,29 @@ const App = {
             el.classList.add('hp-flash');
             el.addEventListener('animationend', () => el.classList.remove('hp-flash'), { once: true });
         }
-        if (delta < 0 && prev > 0) {
+        if (playSounds && delta < 0 && prev > 0) {
             const enemy = this.currentStage?.bossEnemies?.find(e => e.id === enemyId);
             if (enemy) {
                 if (current === 0) {
-                    // MORTE
-                    if (enemy.koSound) this.playSfx(enemy.koSound);
-                    if (enemy.koTriggersGameOver) {
-                        setTimeout(() => this.triggerGameOver(), 1500);
-                    } else {
-                        setTimeout(() => this.playOutro(), 1500);
-                    }
+                    this._triggerBossKo(enemy);
+                } else if (enemy.hitSequence) {
+                    // Sidebar: solo suono ferita
+                    this.playSfx(enemy.hitSequence.woundSound);
                 } else {
                     const maxHp = this.bossMaxHpState?.[enemyId] ?? 0;
                     const crossedHalf = maxHp > 0 && prev > maxHp / 2 && current <= maxHp / 2;
                     if (crossedHalf && (enemy.hitHalfSound || enemy.hitHalfVideo)) {
-                        // FERITO+ — sotto la metà
                         if (enemy.hitHalfSound) this.playSfx(enemy.hitHalfSound);
                         if (enemy.hitHalfVideo) this._playBossHalfVideo(enemy.hitHalfVideo);
                     } else {
-                        // FERITO normale
-                        if (enemy.hitSound) this.playSfx(enemy.hitSound);
+                        const dmg = -delta;
+                        const exactEntry = (enemy.damageSounds || []).find(ds => ds.damage === dmg);
+                        const soundToPlay = exactEntry
+                            ? (exactEntry.sounds
+                                ? exactEntry.sounds[Math.floor(Math.random() * exactEntry.sounds.length)]
+                                : exactEntry.sound)
+                            : enemy.hitSound;
+                        if (soundToPlay) this.playSfx(soundToPlay);
                     }
                 }
             }
@@ -3298,6 +3702,89 @@ const App = {
         this.bossMaxHpState = {};
     },
 
+    _triggerBossKo(enemy) {
+        if (enemy.stopMusicOnKo) this.stopMusic();
+        if (enemy.koSequence) {
+            this._playBossKoSequence(enemy);
+        } else {
+            if (enemy.koSound) this.playSfx(enemy.koSound);
+            if (enemy.koTriggersGameOver) {
+                setTimeout(() => this.triggerGameOver(), 1500);
+            } else {
+                setTimeout(() => this.playOutro(), 1500);
+            }
+        }
+    },
+
+
+    _playBossKoSequence(enemy) {
+        const seq = enemy.koSequence;
+        if (!seq) return;
+        const { sound, repeat, parallelAt, parallelSound,
+                volume = 0.85, overlap = 0, parallelOffset = 0, fadeOutLast = 0 } = seq;
+        let parallelStarted = false;
+        const playNext = (n) => {
+            if (n > repeat) return;
+            const a = new Audio(sound);
+            a.volume = volume;
+            // Ultimo play: triggerKo su ended
+            if (n === repeat) {
+                a.addEventListener('ended', () => {
+                    if (enemy.koTriggersGameOver) this.triggerGameOver();
+                    else this.playOutro();
+                }, { once: true });
+            }
+            // timeupdate: overlap, morte anticipata, fade out ultimo play
+            if (overlap > 0 || (parallelSound && n === parallelAt && parallelOffset > 0) || (n === repeat && fadeOutLast > 0)) {
+                let fadeStarted = false;
+                const onTick = () => {
+                    if (!a.duration) return;
+                    const remaining = a.duration - a.currentTime;
+                    // Morte prima (soglia più alta), senza return per non bloccare il check overlap
+                    if (parallelSound && n === parallelAt && !parallelStarted && remaining <= parallelOffset) {
+                        parallelStarted = true;
+                        const p = new Audio(parallelSound);
+                        p.volume = 0.85;
+                        p.play().catch(() => {});
+                    }
+                    // Fade out dell'ultimo play
+                    if (n === repeat && fadeOutLast > 0 && !fadeStarted && remaining <= fadeOutLast) {
+                        fadeStarted = true;
+                        const startVol = a.volume;
+                        const steps = 30;
+                        let step = 0;
+                        const timer = setInterval(() => {
+                            step++;
+                            a.volume = Math.max(0, startVol * (1 - step / steps));
+                            if (step >= steps) clearInterval(timer);
+                        }, (fadeOutLast * 1000) / steps);
+                    }
+                    // Overlap: avvia il prossimo prima della fine
+                    if (n < repeat && overlap > 0 && remaining <= overlap) {
+                        a.removeEventListener('timeupdate', onTick);
+                        playNext(n + 1);
+                    }
+                };
+                a.addEventListener('timeupdate', onTick);
+            } else if (n < repeat) {
+                a.addEventListener('ended', () => playNext(n + 1), { once: true });
+            }
+            // Morte senza anticipo (parallelOffset=0)
+            if (parallelSound && n === parallelAt && parallelOffset === 0) {
+                a.addEventListener('ended', () => {
+                    if (!parallelStarted) {
+                        parallelStarted = true;
+                        const p = new Audio(parallelSound);
+                        p.volume = 0.85;
+                        p.play().catch(() => {});
+                    }
+                }, { once: true });
+            }
+            a.play().catch(() => {});
+        };
+        playNext(1);
+    },
+
     _playBossHalfVideo(videoFile) {
         if (!videoFile) return;
         setTimeout(() => {
@@ -3309,7 +3796,7 @@ const App = {
         }, 4000);
     },
 
-    adjustHp(playerName, delta, skipHurtSound = false) {
+    adjustHp(playerName, delta, skipHurtSound = false, skipHealSound = false) {
         if (this.hpState[playerName] === undefined) return;
         const prev = this.hpState[playerName];
         const ch = CHARACTERS[playerName];
@@ -3319,6 +3806,9 @@ const App = {
 
         if (!skipHurtSound && delta < 0 && current > 0 && ch?.hurtSound) {
             this._playActionSound(ch.hurtSound);
+        }
+        if (!skipHealSound && delta > 0) {
+            this._playActionSound('audio/sfx/cura-dopo-boss.wav');
         }
 
         const el = document.getElementById(`hp-${playerName}`);
@@ -3376,6 +3866,11 @@ const App = {
             const btn = document.getElementById(`marker-${m}-${playerName}`);
             if (btn) btn.classList.toggle('active', !!this.markerState[playerName][m]);
         });
+        // Se nessun giocatore ha più il marker !, termina l'alert
+        const anyAlert = this.stagePlayers?.some(p => this.markerState[p]?.alert);
+        if (!anyAlert && this.alertState !== 'normal') {
+            this.resetAlert();
+        }
     },
 
     // ============================================
@@ -3406,7 +3901,18 @@ const App = {
                 if (!e.damageFrom) return true;
                 return actionCategory && e.damageFrom.includes(actionCategory);
             });
-            if (enemies.length === 0) return;
+            if (enemies.length === 0) {
+                // Nessun nemico danneggiabile da questa categoria: suona audio "attacco ignorato" se disponibile
+                const allEnemies = this.currentStage.bossEnemies.filter(e => (this.bossHpState[e.id] ?? 0) > 0);
+                const sounds = allEnemies.flatMap(e => e.blockedAttackSounds || []);
+                if (sounds.length > 0) {
+                    const src = sounds[Math.floor(Math.random() * sounds.length)];
+                    const sfx = new Audio(src);
+                    sfx.volume = 0.85;
+                    sfx.play().catch(() => {});
+                }
+                return;
+            }
             this._pendingBossDamageAmount = 0;
             this._pendingBossDamageEnemy  = enemies[0].id;
             document.getElementById('attack-result-title').textContent = 'DANNI AL BOSS';
@@ -3471,7 +3977,47 @@ const App = {
         this.closeAttackResultPopup();
         if (amount > 0 && enemyId) {
             if (enemyId === 'ocelot') this._ocelotZeroStreak = 0;
-            this.adjustBossHp(enemyId, -amount);
+            const enemy = this.currentStage?.bossEnemies?.find(e => e.id === enemyId);
+            const hs = enemy?.hitSequence;
+            if (hs && action?.attackType === 'physical') {
+                // Sequenza rapida colpo+ferita (stile CQC) — suoni gestiti qui, HP aggiornato silenziosamente
+                this.adjustBossHp(enemyId, -amount, false);
+                const newHp = this.bossHpState?.[enemyId] ?? 0;
+                // Sequenza: (colpo→ferito) × hits, ultimo ferito sempre ferito+
+                // Ogni coppia dura PAIR_MS ms; il ferito parte WOUND_OFFSET ms dopo il colpo
+                const hits       = Math.min(Math.max(amount, 1), 3);
+                const WOUND_OFFSET = 150; // ms: colpo → ferito dentro la stessa coppia
+                const PAIR_MS      = 300; // ms tra l'inizio di una coppia e la successiva
+                let lastAudio = null;
+                for (let i = 0; i < hits; i++) {
+                    const isLast  = i === hits - 1;
+                    const pairT   = i * PAIR_MS + (isLast && hits > 1 ? 150 : 0);
+                    const woundFile = isLast ? (hs.woundPlusSound || hs.woundSound) : hs.woundSound;
+                    setTimeout(() => {
+                        const a = new Audio(hs.hitSound); a.volume = 0.85; a.play().catch(() => {});
+                    }, pairT);
+                    setTimeout(() => {
+                        const a = new Audio(woundFile); a.volume = 0.85;
+                        if (isLast) {
+                            lastAudio = a;
+                            if (newHp === 0) {
+                                a.addEventListener('ended', () => this._triggerBossKo(enemy), { once: true });
+                            } else {
+                                const dmgEntry = (enemy.damageSounds || []).find(ds => ds.damage === amount);
+                                if (dmgEntry) {
+                                    const sounds = dmgEntry.sounds || (dmgEntry.sound ? [dmgEntry.sound] : []);
+                                    const snd = sounds[Math.floor(Math.random() * sounds.length)];
+                                    const delay = dmgEntry.delay ?? 1000;
+                                    a.addEventListener('ended', () => setTimeout(() => this.playSfx(snd), delay), { once: true });
+                                }
+                            }
+                        }
+                        a.play().catch(() => {});
+                    }, pairT + WOUND_OFFSET);
+                }
+            } else {
+                this.adjustBossHp(enemyId, -amount);
+            }
             // Reazione Ocelot quando Baker viene colpito con arma a distanza
             if (enemyId === 'baker') {
                 const cat = action?.category;
@@ -3658,12 +4204,24 @@ const App = {
     },
 
     setPlayerZone(playerName, zoneIndex) {
+        // Blocco cambio zona finché un evento specifico non è stato cliccato
+        const blockUntil = this.currentStage?.blockZoneChangeUntilEvent;
+        if (blockUntil && !this.eventClickedState[blockUntil]) {
+            // Ripristina il select al valore attuale
+            const sel = document.querySelector(`.zone-select[onchange*="${playerName}"]`);
+            if (sel) sel.value = this.playerZoneState[playerName] ?? 0;
+            return;
+        }
         this.playerZoneState[playerName] = parseInt(zoneIndex);
         // Cambia musica solo se è il giocatore attivo in questo momento
         const isActive = this.stagePlayers?.length === 1
             ? true
             : (this.turnPhase === 'players' && this.playerSubPhase === 'active' && this.selectedPlayerForTurn === playerName);
         if (isActive) this._playMusicForZone(parseInt(zoneIndex), true);
+        // Aggiorna pannello equipment se lo stage ha restrizioni di zona
+        if (this.currentStage?.zoneRestrictions) this._refreshEquipmentPanel(playerName);
+        // Aggiorna disponibilità eventi (la zona del giocatore può sbloccarli)
+        this._updateEventButtonsForTurn();
     },
 
     // ============================================
@@ -3943,7 +4501,7 @@ const App = {
                 // Include anche gli item con owner === p non ancora nell'unlocked pool
                 const ownerItems = Object.keys(EQUIPMENT).filter(id => EQUIPMENT[id].owner === p && !unlocked.includes(id));
                 const pool       = [...unlocked, ...ownerItems];
-                const available  = pool.filter(id => !usedIds.has(id) && (!EQUIPMENT[id].owner || EQUIPMENT[id].owner === p));
+                const available  = pool.filter(id => !usedIds.has(id) && (!EQUIPMENT[id].owner || EQUIPMENT[id].owner === p) && !EQUIPMENT[id].stageOnly);
 
                 const ddId = `eq-dd-${p}-${i}`;
                 const allOpts = [
@@ -5060,13 +5618,29 @@ const App = {
     },
 
     selectBlock(blockId) {
+        const block = this._getCard(this.selectedCard)[blockId];
         if (this.cardScreenMode === 'save') {
-            // Save mode: conferma diretta senza dialogo intermedio
-            this._doSave(blockId);
+            if (block) {
+                // Blocco occupato: chiedi conferma sovrascrittura
+                this.playSfx(CONFIG.menuSounds['confirm-save'].file);
+                this.selectedBlock = blockId;
+                document.querySelectorAll('.card-block').forEach(el => el.classList.remove('selected'));
+                document.getElementById(`card-block-${blockId}`)?.classList.add('selected');
+                const confirmArea = document.getElementById('block-confirm-area');
+                if (!confirmArea) return;
+                confirmArea.innerHTML = `
+                    <span class="confirm-msg">Sovrascrivere il salvataggio?</span>
+                    <button class="btn-codec btn-small" onclick="App.confirmBlock()"><span class="btn-inner">✓ CONFERMA</span></button>
+                    <button class="btn-codec btn-small btn-stop" onclick="App.cancelBlock()"><span class="btn-inner">✗ ANNULLA</span></button>
+                `;
+                confirmArea.style.display = '';
+            } else {
+                // Blocco vuoto: salva direttamente
+                this._doSave(blockId);
+            }
             return;
         }
         // Load mode: chiedi conferma
-        const block = this._getCard(this.selectedCard)[blockId];
         if (!block) return;
         this.playSfx(CONFIG.menuSounds['confirm-save'].file);
         this.selectedBlock = blockId;
@@ -5135,7 +5709,16 @@ const App = {
             const current = document.querySelector('.screen.active');
             if (current) current.classList.remove('active');
             this.currentScreen = '';
-            setTimeout(() => this.selectStage(this.session.stage), 2000);
+            setTimeout(() => {
+                const stage = STAGES.find(s => s.id === this.session.stage);
+                if (!stage) return;
+                // Rendi visibile stage-active (players-popup è dentro questo screen)
+                // senza inizializzarlo — il popup apparirà sopra e poi selectStage farà tutto
+                const sa = document.getElementById('stage-active');
+                if (sa) sa.classList.add('active');
+                this.currentScreen = 'stage-active';
+                this.showPlayersPopup(stage);
+            }, 2000);
         }
     },
 

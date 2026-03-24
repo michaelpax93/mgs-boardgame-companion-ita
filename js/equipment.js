@@ -133,6 +133,77 @@ const EQUIPMENT = {
         },
     },
 
+    "007": {
+        name: "GRANATA",
+        type: "item",
+        itemType: "esplosivo",
+        itemSubtype: "granata",
+        consumable: true,
+        action: {
+            name: "GETTA",
+            cost: 1,
+            desc: "Bersaglia 1 casella in Linea di Vista entro 5 caselle. Infliggi 2 danni a tutte le miniature entro 2 dalla casella bersaglio e in Linea di Vista di quest'ultima. Poi scarta questa carta. RUMOROSA: colloca il tuo ! sotto la tua miniatura.",
+            alertImmediate: true,
+            attack: true,
+            attackType: "ranged",
+            targets: 1,
+            category: "grenade",
+            sound: "audio/sfx/granata.wav",
+        },
+    },
+
+    "010": {
+        name: "SCATOLA DI CARTONE A",
+        type: "item",
+        itemType: "oggetto",
+        itemSubtype: "scatola",
+        action: {
+            name: "NASCONDITI",
+            cost: 1,
+            desc: "Se non sei in Linea di Vista di una guardia o una telecamera, sostituisci la tua miniatura con la miniatura della scatola di cartone. Nascosto: Le guardie e le telecamere ti considerano come se fossi una miniatura di una guardia. Sostituisci la scatola di cartone con la tua miniatura se: Salti una guardia; Entri nella Linea di Vista, o attraversi la Linea di Vista, di una guardia o una telecamera; Effettui una qualsiasi azione diversa da Movimento Furtivo, Scatto o Concentrazione. \"Una scatola di cartone?\": Se una guardia termina il suo movimento orientata verso di te e in una casella adiacente alla tua, sostituisci la scatola di cartone con la tua miniatura.",
+            sound: "audio/sfx/oggetto-scelta.wav",
+        },
+    },
+
+    "009": {
+        name: "NIKITA",
+        type: "weapon",
+        itemType: "arma a distanza",
+        itemSubtype: "lanciarazzi",
+        charges: 3,
+        action: {
+            name: "LANCIA",
+            cost: 1,
+            desc: "Se non ce ne sono sulla mappa, colloca 1 missile in una casella adiacente vuota e scarta 1 proiettile. Poi tira 2 dadi neri e muovi il missile, in una singola direzione, di un numero di caselle pari al risultato di 1 dei dadi. Poi puoi fare lo stesso con l'altro risultato. Se il missile sta per muoversi contro un ostacolo o si trova nella stessa casella di una miniatura, attacca tutte le miniature entro 1 casella e in Linea di Vista. Poi rimuovi il missile. Se si muove fuori dalla mappa, rimuovi il missile. RUMOROSA: Colloca il tuo segnalino ! sotto la tua miniatura.",
+            dice: [{ color: "white", count: 3 }],
+            alertImmediate: true,
+            attack: true,
+            attackType: "ranged",
+            targets: 1,
+            category: "missile",
+            usesCharge: true,
+        },
+    },
+
+    "E06B": {
+        name: "NIKITA",
+        type: "weapon",
+        itemType: "arma a distanza",
+        itemSubtype: "lanciarazzi",
+        stageOnly: true,   // ottenibile solo tramite evento, non selezionabile in pre-stage
+        action: {
+            name: "LANCIA",
+            cost: 1,
+            desc: "Se non ce ne sono sulla mappa, colloca 1 missile in una casella adiacente vuota. Poi tira 2 dadi neri e muovi il missile, in una singola direzione, di un numero di caselle pari al risultato di 1 dei dadi. Poi puoi fare lo stesso con l'altro risultato. Se il missile sta per muoversi contro un ostacolo o si trova nella stessa casella di una miniatura, attacca tutte le miniature entro 1 casella e in Linea di Vista. Poi rimuovi il missile. Se si muove fuori dalla mappa, rimuovi il missile. RUMOROSA: Colloca il tuo segnalino ! sotto la tua miniatura.",
+            dice: [{ color: "white", count: 3 }],
+            alertImmediate: true,
+            attack: true,
+            attackType: "ranged",
+            targets: 1,
+            category: "missile",
+        },
+    },
+
     "031": {
         name: "SCHEDA D'ACCESSO PAL",
         type: "special",
@@ -184,6 +255,21 @@ const EQUIPMENT = {
             usesCharge: true,
             category: "rifle",
             sound: "audio/sfx/attacco-guardia.wav",
+        },
+    },
+
+    "011": {
+        name: "MEDICINE",
+        type: "item",
+        itemType: "oggetto",
+        itemSubtype: "medicina",
+        consumable: true,
+        action: {
+            name: "USA",
+            cost: 0,
+            desc: "Usa in qualsiasi momento durante il tuo turno per ripristinare tutti i tuoi segnalini concentrazione. Poi scarta questa carta.",
+            restoreConcentration: true,
+            sound: "audio/sfx/oggetto-preso.wav",
         },
     },
 
