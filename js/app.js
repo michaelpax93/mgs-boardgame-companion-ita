@@ -870,6 +870,8 @@ const App = {
             if (p) p.removeEventListener('timeupdate', this.musicIntroTimer);
             this.musicIntroTimer = null;
         }
+        const btnIntro = document.getElementById('btn-intro');
+        if (btnIntro) { btnIntro.disabled = true; btnIntro.style.opacity = '0.3'; }
         // Se un video è già in riproduzione (es. outro avviato mentre l'intro era ancora in corso),
         // non avviare la musica — lo farà stopVideo quando quel video termina o viene fermato.
         const vp = document.getElementById('video-player');
@@ -3242,6 +3244,7 @@ const App = {
         this._bossCardFollowUpUsed  = {};
         this._bossSpecialBtnUsed    = {};
         this._bossCounterFirstUsed  = {};
+        this._bossFirstHitUsed      = {};
         this._ocelotZeroStreak     = 0;
         const bossEnemies = stage.bossEnemies || [];
         const playerCount = players.length;
@@ -3507,13 +3510,18 @@ const App = {
 
         // Audio solo su incremento
         if (delta > 0) {
-            let sound = null;
             const firstKey = `${enemyId}-${btnId}-first`;
-            if (next >= btn.max)                            sound = btn.maxSound;
-            else if (next === 1 && !this._bossCounterFirstUsed[firstKey]) sound = btn.firstSound;
-            else                                            sound = btn.repeatSound;
+            const isFirst = next === 1 && !this._bossCounterFirstUsed[firstKey];
             if (next === 1) this._bossCounterFirstUsed[firstKey] = true;
-            if (sound) { const sfx = new Audio(sound); sfx.volume = 0.85; sfx.play().catch(() => {}); }
+            if (isFirst && btn.firstVideo) {
+                this._playBossHalfVideo(btn.firstVideo);
+            } else {
+                let sound = null;
+                if (next >= btn.max)  sound = btn.maxSound;
+                else if (isFirst)     sound = btn.firstSound;
+                else                  sound = btn.repeatSound;
+                if (sound) { const sfx = new Audio(sound); sfx.volume = 0.85; sfx.play().catch(() => {}); }
+            }
         }
     },
 
@@ -3621,7 +3629,7 @@ const App = {
             }
             hurtAudio.play().catch(() => {});
         } else if (surviving && atk?.hitVideo) {
-            this._playBossHalfVideo(atk.hitVideo);
+            this._playBossHalfVideo(atk.hitVideo, 3000);
         }
         if (damage > 0) this.adjustHp(playerName, -damage, surviving);
     },
@@ -3669,14 +3677,25 @@ const App = {
                 if (current === 0) {
                     this._triggerBossKo(enemy);
                 } else if (enemy.hitSequence) {
-                    // Sidebar: solo suono ferita
+                    // Sidebar: suono ferita sempre + video se primo colpo o metà vita
+                    const maxHp = this.bossMaxHpState?.[enemyId] ?? 0;
+                    const crossedHalf = maxHp > 0 && prev > maxHp / 2 && current <= maxHp / 2;
                     this.playSfx(enemy.hitSequence.woundSound);
+                    if (!this._bossFirstHitUsed[enemyId] && enemy.firstHitVideo) {
+                        this._bossFirstHitUsed[enemyId] = true;
+                        this._playBossHalfVideo(enemy.firstHitVideo);
+                    } else if (crossedHalf && enemy.hitHalfVideo) {
+                        this._playBossHalfVideo(enemy.hitHalfVideo);
+                    }
                 } else {
                     const maxHp = this.bossMaxHpState?.[enemyId] ?? 0;
                     const crossedHalf = maxHp > 0 && prev > maxHp / 2 && current <= maxHp / 2;
-                    if (crossedHalf && (enemy.hitHalfSound || enemy.hitHalfVideo)) {
+                    if (!this._bossFirstHitUsed[enemyId] && enemy.firstHitVideo) {
+                        this._bossFirstHitUsed[enemyId] = true;
+                        this._playBossHalfVideo(enemy.firstHitVideo);
+                    } else if (crossedHalf && (enemy.hitHalfSound || enemy.hitHalfVideo)) {
                         if (enemy.hitHalfSound) this.playSfx(enemy.hitHalfSound);
-                        if (enemy.hitHalfVideo) this._playBossHalfVideo(enemy.hitHalfVideo);
+                        if (enemy.hitHalfVideo) this._playBossHalfVideo(enemy.hitHalfVideo, 3000);
                     } else {
                         const dmg = -delta;
                         const exactEntry = (enemy.damageSounds || []).find(ds => ds.damage === dmg);
@@ -3785,7 +3804,7 @@ const App = {
         playNext(1);
     },
 
-    _playBossHalfVideo(videoFile) {
+    _playBossHalfVideo(videoFile, delay = 2000) {
         if (!videoFile) return;
         setTimeout(() => {
             // Stessa logica di playEvent con stopMusic: false — la musica continua
@@ -3793,7 +3812,7 @@ const App = {
                 this._eventMusicRestore = this.musicLoop.getVolume();
             }
             this.playVideo(videoFile);
-        }, 4000);
+        }, delay);
     },
 
     adjustHp(playerName, delta, skipHurtSound = false, skipHealSound = false) {
@@ -3981,8 +4000,19 @@ const App = {
             const hs = enemy?.hitSequence;
             if (hs && action?.attackType === 'physical') {
                 // Sequenza rapida colpo+ferita (stile CQC) — suoni gestiti qui, HP aggiornato silenziosamente
+                const prevHp = this.bossHpState?.[enemyId] ?? 0;
+                const maxHp  = this.bossMaxHpState?.[enemyId] ?? 0;
+                const isFirstHit = !this._bossFirstHitUsed[enemyId];
+                if (isFirstHit) this._bossFirstHitUsed[enemyId] = true;
                 this.adjustBossHp(enemyId, -amount, false);
                 const newHp = this.bossHpState?.[enemyId] ?? 0;
+                if (newHp > 0) {
+                    if (isFirstHit && enemy.firstHitVideo) {
+                        this._playBossHalfVideo(enemy.firstHitVideo);
+                    } else if (maxHp > 0 && prevHp > maxHp / 2 && newHp <= maxHp / 2 && enemy.hitHalfVideo) {
+                        this._playBossHalfVideo(enemy.hitHalfVideo);
+                    }
+                }
                 // Sequenza: (colpo→ferito) × hits, ultimo ferito sempre ferito+
                 // Ogni coppia dura PAIR_MS ms; il ferito parte WOUND_OFFSET ms dopo il colpo
                 const hits       = Math.min(Math.max(amount, 1), 3);
@@ -3992,7 +4022,7 @@ const App = {
                 for (let i = 0; i < hits; i++) {
                     const isLast  = i === hits - 1;
                     const pairT   = i * PAIR_MS + (isLast && hits > 1 ? 150 : 0);
-                    const woundFile = isLast ? (hs.woundPlusSound || hs.woundSound) : hs.woundSound;
+                    const woundFile = isLast ? (amount > 1 ? (hs.woundPlusSound || hs.woundSound) : hs.woundSound) : hs.woundSound;
                     setTimeout(() => {
                         const a = new Audio(hs.hitSound); a.volume = 0.85; a.play().catch(() => {});
                     }, pairT);

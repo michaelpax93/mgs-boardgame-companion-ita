@@ -135,7 +135,10 @@ const STAGES = [
                     "audio/sfx/ocelot/movimento3.wav",
                 ],
                 koTriggersOutro: true,
-                hitSound: "audio/sfx/ocelot/ocelot-colpito.wav",
+                hitSequence: {
+                    hitSound:  "audio/sfx/colpo-fisico.wav",
+                    woundSound: "audio/sfx/ocelot/ocelot-colpito.wav",
+                },
                 koSound:  "audio/sfx/ocelot/ocelot-ko.wav",
                 cards: [
                     { label: "Adoro il profumo della cordite... Per te, però, sarà il profumo della tua morte.",                                              file: "audio/sfx/ocelot/Adoro il profumo della cordite... Per te, però, sarà il profumo della tua morte.wav" },
@@ -251,7 +254,7 @@ const STAGES = [
     },
     {
         id: 7,
-        name: "NINJA CYBORG",
+        name: "CYBORG NINJA",
         type: "BOSS BATTLE",
         isBoss: true,
         players: ["Snake", "Meryl"],
@@ -262,12 +265,12 @@ const STAGES = [
         musicLabels: ["Boss"],
         variableActions: { "Snake": [], "Meryl": [] },
         musicDuringIntro: true,
-        musicIntroDelay: 107000,
+        musicIntroDelay: 106240,
         musicIntroVolume: 20,
         bossEnemies: [
             {
                 id: "ninja",
-                name: "NINJA CYBORG",
+                name: "CYBORG NINJA",
                 hpByPlayerCount: { 1: 12, 2: 24 },
                 damageFrom: ["melee"],
                 attackSound: "audio/azioni/ninja/attacco-combo.wav",
@@ -275,13 +278,15 @@ const STAGES = [
                     { file: "audio/azioni/ninja/movimento-furtivo.wav", repeat: 3 },
                     "audio/azioni/ninja/scatto.wav",
                 ],
+                firstHitVideo: "video/stage_07_ninja_prima_ferita.mp4",
                 hitSequence: {
                     hitSound:       "audio/sfx/colpo-fisico.wav",
                     woundSound:     "audio/azioni/ninja/ferito.wav",
                     woundPlusSound: "audio/azioni/ninja/ferito+.wav",
                 },
+                hitHalfVideo: "video/stage_07_ninja_ferita.mp4",
                 damageSounds: [
-                    { damage: 2, delay: 1000, sounds: ["audio/sfx/ninja/fammi ancora male.wav", "audio/sfx/ninja/stavo aspettando questo dolore.wav"] },
+                    { damage: 2, delay: 1000, sounds: ["audio/sfx/ninja/fammi ancora male.wav", "audio/sfx/ninja/stavo aspettando questo dolore.wav", "audio/sfx/ninja/così così.wav"] },
                 ],
                 equipReactions: {
                     "003": { sound: "audio/sfx/ninja/ferito-chaff.wav", delay: 5000 },
@@ -304,7 +309,7 @@ const STAGES = [
                         type: "counter",
                         label: "OMBRA",
                         max: 4,
-                        firstSound:  "audio/sfx/ninja/prendimi, su.wav",
+                        firstVideo:  "video/stage_07_ninja_ombra.mp4",
                         repeatSound: "audio/sfx/ninja/sono qui snake.wav",
                         maxSound:    "audio/sfx/ninja/dove stai guardando.wav",
                     },
