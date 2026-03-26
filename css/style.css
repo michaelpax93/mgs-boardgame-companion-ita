@@ -250,6 +250,82 @@ body {
     line-height: 1;
 }
 
+/* Inline Save (Mei Ling automatico) */
+.inline-save-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+.inline-save-box {
+    background: var(--bg-dark, #0a0a0a);
+    border: 1px solid var(--codec-green);
+    padding: 1.5rem 2rem;
+}
+.inline-save-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+.inline-save-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    cursor: pointer;
+    font-family: var(--font-display);
+    font-size: 0.85rem;
+    letter-spacing: 0.12em;
+    color: #fff;
+    padding: 0.2rem 0;
+}
+.inline-save-item.focused {
+    color: var(--codec-green);
+}
+.inline-save-cursor {
+    font-size: 0.7rem;
+    visibility: hidden;
+    color: var(--codec-green);
+    width: 0.8em;
+}
+.inline-save-item.focused .inline-save-cursor {
+    visibility: visible;
+}
+
+.boss-defense {
+    font-family: var(--font-display);
+    font-size: 0.5rem;
+    color: var(--codec-red);
+    text-align: center;
+    margin-top: 0.2rem;
+    letter-spacing: 0.06em;
+}
+
+.boss-defense-btn {
+    background: transparent;
+    border: 1px solid var(--codec-red);
+    cursor: pointer;
+    padding: 0.15rem 0.4rem;
+}
+
+.boss-defense-btn:hover {
+    background: rgba(255, 58, 58, 0.1);
+}
+
+.mantis-keyword-input {
+    background: #000;
+    border: 1px solid var(--codec-red);
+    color: var(--text-bright);
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    padding: 0.4rem 0.6rem;
+    width: 16rem;
+    text-align: center;
+    outline: none;
+}
+
 /* HP tracker */
 .hp-tracker {
     display: flex;
@@ -555,11 +631,18 @@ body {
     position: relative;
     transition: all 0.2s ease;
     letter-spacing: 0.1em;
+    display: flex;
+    align-items: stretch;
 }
 
 .btn-codec .btn-inner {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
     padding: 0.7rem 1.8rem;
+    white-space: nowrap;
+    box-sizing: border-box;
     background: linear-gradient(180deg, rgba(58, 255, 126, 0.05) 0%, rgba(58, 255, 126, 0) 100%);
     transition: all 0.2s ease;
 }
@@ -871,6 +954,76 @@ body {
     max-height: 100%;
     visibility: hidden;
     pointer-events: none;
+}
+
+/* ── Mantis: overlay nero tra i video (opacity-driven, mai display:none) ── */
+#mantis-black {
+    position: absolute;
+    inset: 0;
+    background: #000;
+    z-index: 10;
+    pointer-events: none;
+    opacity: 0;
+}
+
+/* ── Mantis: tremore schermo (onda ammortizzata: forte all'inizio, si appiattisce) ── */
+@keyframes mantis-screen-shake {
+    0%   { transform: translate(-12px,  7px) rotate(-0.6deg); }
+    7%   { transform: translate( 14px, -9px) rotate( 0.7deg); }
+    14%  { transform: translate(-11px,  8px) rotate(-0.5deg); }
+    21%  { transform: translate( 10px, -7px) rotate( 0.5deg); }
+    28%  { transform: translate( -8px,  6px) rotate(-0.4deg); }
+    36%  { transform: translate(  7px, -5px) rotate( 0.3deg); }
+    44%  { transform: translate( -5px,  4px) rotate(-0.25deg); }
+    52%  { transform: translate(  4px, -3px) rotate( 0.2deg); }
+    60%  { transform: translate( -3px,  3px) rotate(-0.15deg); }
+    68%  { transform: translate(  2px, -2px) rotate( 0.1deg); }
+    76%  { transform: translate( -2px,  1px) rotate(-0.07deg); }
+    84%  { transform: translate(  1px, -1px) rotate( 0.04deg); }
+    92%  { transform: translate( -1px,  1px) rotate(-0.02deg); }
+    100% { transform: translate(  0,    0  ) rotate( 0deg); }
+}
+
+#video-wrapper.mantis-shaking {
+    animation: mantis-screen-shake 1.5s linear;
+}
+
+
+/* ── Cursore personalizzato globale ── */
+body, body * {
+    cursor: none !important;
+}
+
+#mantis-cursor {
+    position: fixed;
+    width: 24px;
+    height: 24px;
+    pointer-events: none;
+    z-index: 99999;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M3 1 L3 18 L7 14 L10 21 L12 20 L9 13 L15 13 Z' fill='white' stroke='black' stroke-width='1.5' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-size: contain;
+}
+
+@keyframes mantis-cursor-fly {
+    0%   { transform: translate(   0px,    0px); }
+    7%   { transform: translate( 120px,  -80px); }
+    14%  { transform: translate( -90px,   65px); }
+    21%  { transform: translate(  80px,   95px); }
+    28%  { transform: translate(-110px,  -50px); }
+    36%  { transform: translate(  70px,  -70px); }
+    44%  { transform: translate( -55px,   55px); }
+    52%  { transform: translate(  45px,  -40px); }
+    60%  { transform: translate( -35px,   30px); }
+    68%  { transform: translate(  25px,  -20px); }
+    76%  { transform: translate( -15px,   15px); }
+    84%  { transform: translate(  10px,   -8px); }
+    92%  { transform: translate(  -5px,    5px); }
+    100% { transform: translate(   0px,    0px); }
+}
+
+#mantis-cursor.flying {
+    animation: mantis-cursor-fly 1.5s linear;
 }
 
 #video-player-b.mantis-active {
@@ -1614,6 +1767,18 @@ body {
     }
 }
 
+/* Hover feedback (visibile anche senza cursore OS) */
+.menu-item.prev:hover,
+.menu-item.next:hover {
+    opacity: 0.9;
+    color: #6abf6a;
+}
+.menu-item.current:hover {
+    text-shadow:
+        0 0 12px rgba(255, 60, 60, 0.9),
+        0 0 30px rgba(220, 40, 40, 0.5);
+}
+
 /* Sliding animation - smoother with longer transition */
 .menu-wheel.slide-up .menu-item.prev {
     top: -35px;
@@ -1951,10 +2116,48 @@ body {
     cursor: pointer;
     transition: all 0.15s;
     display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
     min-height: 72px;
     width: 100%;
+}
+
+.block-left {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.block-right {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.1rem;
+    flex-shrink: 0;
+}
+
+.block-disc {
+    font-family: var(--font-display);
+    font-size: 0.75rem;
+    color: var(--codec-green);
+    letter-spacing: 0.08em;
+}
+
+.block-difficulty {
+    font-size: 0.58rem;
+    color: rgba(58, 255, 126, 0.6);
+    letter-spacing: 0.05em;
+}
+
+.block-time {
+    font-family: var(--font-ui);
+    font-size: 0.65rem;
+    color: rgba(58, 255, 126, 0.45);
+    letter-spacing: 0.05em;
 }
 
 .card-block:hover:not(.card-block--disabled) {

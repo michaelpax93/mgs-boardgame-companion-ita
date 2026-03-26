@@ -129,6 +129,9 @@ const STAGES = [
                 name: "OCELOT",
                 hpByPlayerCount: { 1: 12, 2: 20 },
                 attackSound: "audio/sfx/ocelot/attacco-ocelot.wav",
+                equipReactions: {
+                    "004": { sound: "audio/sfx/ocelot/non ci vedo.wav", delay: 5000 },
+                },
                 movementSounds: [
                     "audio/sfx/ocelot/movimento1.wav",
                     "audio/sfx/ocelot/movimento2.wav",
@@ -342,12 +345,69 @@ const STAGES = [
         description: "Scontro con Psycho Mantis",
         intro: "video/stage_08_intro.mp4",
         mantisIntro: true,
+mantisDimostrazione: "video/mantis/mantis_dimostrazione.mp4",
+        // Timestamp (secondi dall'inizio di mantis_dimostrazione.mp4) in cui Mantis
+        // fa muovere il controller → tremore schermo + volo cursore
+        // DA CONFIGURARE dopo aver guardato il video
+mantisShakes: [
+            { time: 29.50 },
+            { time: 30.75 },
+            { time: 33.50 },
+            { time: 34.50 },
+        ],
         outro: "video/stage_08_outro.mp4",
         musicIds: ["duel"],
         musicLabels: ["Boss"],
+        sfxOnMusicStart: [
+            { file: "audio/sfx/mantis/blackout.wav", delay: 1500, thenVideo: "video/mantis-video.mp4", thenSfx: "audio/sfx/mantis/mantis-risata.wav" },
+        ],
+        variableActions: { "Snake": [], "Meryl": [] },
         musicDuringIntro: false,
         musicIntroDelay: 0,
         musicIntroVolume: 20,
+        bossEnemies: [
+            {
+                id: "mantis",
+                name: "PSYCHO MANTIS",
+                hpByPlayerCount: { 1: 15, 2: 30 },
+                defense: 12,
+                defensePopup: true,
+                attackSound: "audio/sfx/mantis/attacco.wav",
+                aboveHalfAttackSound: "audio/sfx/mantis/risata.wav",
+                equipReactions: {
+                    "004": { sound: "audio/sfx/mantis/sono cieco.wav", delay: 5000 },
+                },
+                movementSounds: ["audio/sfx/mantis/movimento.wav"],
+                hitSequence: {
+                    hitSound:   "audio/sfx/colpo-fisico.wav",
+                    woundSound: "audio/sfx/mantis/ferito.wav",
+                },
+                hitSound: "audio/sfx/mantis/ferito.wav",
+                koSound: "audio/sfx/mantis/morte.wav",
+                hitHalfSound: "audio/sfx/mantis/perché non riesco a leggerti nella mente.wav",
+                hitExtraSounds: [
+                    "audio/sfx/mantis/perché.wav",
+                    "audio/sfx/mantis/dove la tua mente.wav",
+                ],
+                blockedAttackSounds: [
+                    "audio/sfx/mantis/è inutile.wav",
+                    "audio/sfx/mantis/riesco a vedere i tuoi pensieri.wav",
+                ],
+                cardsLabel: "Azione",
+                cards: [
+                    { label: "VIDEO",              file: "audio/sfx/mantis/blackout.wav", thenVideo: "video/mantis-video.mp4", thenSfx: "audio/sfx/mantis/mantis-risata.wav" },
+                    { label: "STATUE CADENTI",     file: "audio/sfx/mantis/statue cadenti.wav" },
+                    { label: "ARREDAMENTO LETALE", filesAll: ["audio/sfx/mantis/tempesta di mobili.wav", "audio/sfx/mantis/statue cadenti.wav", "audio/sfx/mantis/sedie rotanti.wav", "audio/sfx/mantis/quadri scagliati.wav"] },
+                    { label: "TEMPESTA DI MOBILI", file: "audio/sfx/mantis/tempesta di mobili.wav" },
+                    { label: "SCARICA PSICHICA",   file: "audio/sfx/mantis/scarica psichica.wav" },
+                    { label: "SEDIE ROTANTI",      file: "audio/sfx/mantis/sedie rotanti.wav" },
+                    { label: "QUADRI SCAGLIATI",   file: "audio/sfx/mantis/quadri scagliati.wav" },
+                ],
+            },
+        ],
+        rewards: {
+            always: ["013"],
+        },
         gameOverSounds: ["16"],
     },
     {

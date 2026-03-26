@@ -85,7 +85,6 @@ const EQUIPMENT = {
             alertImmediate: true,
             category: "grenade",
             sound: "audio/sfx/granata-stordente.wav",
-            followUpByStage: { 4: "audio/sfx/ocelot/non ci vedo.wav" },
         },
     },
 
@@ -255,6 +254,19 @@ const EQUIPMENT = {
             usesCharge: true,
             category: "rifle",
             sound: "audio/sfx/attacco-guardia.wav",
+        },
+    },
+
+    "013": {
+        name: "SCHEDA D'ACCESSO DI LIVELLO 3",
+        type: "item",
+        itemType: "oggetto",
+        itemSubtype: "scheda d'accesso",
+        consumable: true,
+        action: {
+            name: "USA",
+            cost: 1,
+            desc: "Sblocca 1 porta di livello 3 o inferiore nella tua casella. Poi scarta questa carta.",
         },
     },
 

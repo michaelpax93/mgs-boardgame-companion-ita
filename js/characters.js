@@ -245,7 +245,7 @@ const CHARACTERS = {
                 category: "melee",
                 targets: 1,
                 dice: [{ color: "white", count: 1 }],
-                sound: "audio/azioni/snake/attacco-corpo-a-corpo.wav",
+                sound: "audio/azioni/meryl/attacco-corpo-a-corpo.wav",
             },
             {
                 id: "attacco-combo",

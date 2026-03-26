@@ -91,7 +91,9 @@ const App = {
         { id: 'ko',           label: '→ KO',         sound: 'audio/azioni/guardie/soldato-che-cose.wav',        reactionSound: 'audio/azioni/guardie/soldato-beccati-questa.wav' },
         { id: 'interrogativo',label: '→ ?',          sound: 'audio/azioni/guardie/soldato-cosa-e-stato.wav' },
         { id: 'pattuglia',    label: 'PATTUGLIA',    sound: 'audio/azioni/guardie/soldato-passo-guardia.wav' },
-        { id: 'attacca',      label: '⚔ ATTACCA',   sound: 'audio/sfx/attacco-guardia.wav', alertOnly: true },
+        { id: 'attacca',      label: '⚔ ATTACCA',        sound: 'audio/sfx/attacco-guardia.wav',                        alertOnly: true },
+        { id: 'scatolone',    label: '📦 SCATOLONE',      sound: 'audio/azioni/guardie/soldato-e-solo-uno-scatolone.wav', boxOnly: true },
+        { id: 'scatolone-ng', label: '📦 SCATOLONE — !',  sound: 'audio/azioni/guardie/soldato-fuori-dai-piedi.wav',      boxOnly: true },
     ],
 
     // Zona corrente per ogni giocatore (indice posizionale nell'array enemies)
@@ -115,6 +117,9 @@ const App = {
             defeated: 'audio/azioni/guardie/soldato-ucciso.wav',
         },
     },
+
+    // Stato scatolone per giocatore (true = giocatore nascosto nello scatolone)
+    boxState: {},
 
     // Alert cause popup
     _inCameraSight: false,
@@ -669,11 +674,9 @@ const App = {
             btnIntro.style.opacity = hasIntro ? '1' : '0.3';
         }
 
-        // MEI LING: label "SALVATAGGIO" nel titolo ALERT visibile dal 2° stage in poi
-        const meiLingSection = document.getElementById('mei-ling-section');
-        if (meiLingSection) meiLingSection.style.display = stage.id >= 2 ? '' : 'none';
-
+        this.stopVideo();
         // NEXT STAGE button: visibile solo in newGameMode, disabilitato finché outro non visto
+        // NB: deve stare DOPO stopVideo() altrimenti _outroPlaying dello stage precedente lo riabilita
         const btnNext = document.getElementById('btn-next-stage');
         if (btnNext) {
             const hasNextStage = !!STAGES.find(s => s.id === stage.id + 1);
@@ -685,12 +688,11 @@ const App = {
                 btnNext.style.display = 'none';
             }
         }
-
-        this.stopVideo();
         this.eventClickedState = {};
         this.introPlayed = false;
         this.outroPlayed = false;
         this.missileState = {}; // playerName → true se il missile è attivo sulla mappa
+        this.boxState = {};
         this._missilePendingPlayer = null;
         this._eventStoppedMusic = false;
         this.markerState = {};
@@ -877,6 +879,12 @@ const App = {
         const vp = document.getElementById('video-player');
         if (vp && !vp.paused) return;
 
+        // Stage 2: se non ancora salvato per questo stage, mostra Mei Ling prima di avviare la musica
+        if (this.currentStage?.id === 2 && (this.session?.savedForStage ?? 0) < 2) {
+            this._triggerInlineSave(null); // nextStage = null → resta sullo stage 2
+            return;
+        }
+
         if (this.currentStage && this.currentStage.startInAlert) {
             this.triggerAlert();
         } else if (this.musicLoop && this.musicLoop.isPlaying()) {
@@ -890,84 +898,103 @@ const App = {
     _getMantisVariantVideo() {
         const s = this.session;
         if (!s) return 'video/Mantis/a-c-s0.mp4';
-        const a = s.alerts < 5 ? '-' : '+';
-        const c = s.continues < 5 ? '-' : '+';
-        const sv = s.saves === 0 ? '0' : (s.saves < 5 ? '-' : '+');
+        const a = s.alerts < 4 ? '-' : '+';
+        const c = s.continues < 4 ? '-' : '+';
+        const sv = s.saves === 0 ? '0' : (s.saves < 4 ? '-' : '+');
         const t = (c === '+' && s.trappola) ? 't' : '';
         return `video/Mantis/a${a}c${c}s${sv}${t}.mp4`;
     },
 
     _startMantisChain() {
         const player = document.getElementById('video-player');
-        const playerB = document.getElementById('video-player-b');
         if (!player || !this.currentStage) return;
         const stage = this.currentStage;
         const variantSrc = this._getMantisVariantVideo();
-        const OVERLAP = 0.12; // secondi prima della fine di playerA in cui si avvia playerB (muto)
+        const dimosSrc   = stage.mantisDimostrazione || 'video/mantis/mantis_dimostrazione.mp4';
+        const FADE_MS    = 175; // ms di fade-in / fade-out
 
-        // Rimuove eventuali listener stantii da playVideo() precedenti
+        // Rimuove listener stantii
         if (this._autoStopListener) {
             player.removeEventListener('ended', this._autoStopListener);
             this._autoStopListener = null;
         }
-
-        // Precarica la variante nel secondo player: position:absolute invisibile
-        // così il browser decodifica i frame senza occupare spazio nel layout
-        if (playerB) {
-            playerB.muted = true;
-            playerB.src = variantSrc;
-            playerB.style.display = '';          // toglie display:none inline, CSS prende il controllo (block)
-            playerB.classList.add('mantis-preload'); // position:absolute, visibility:hidden
-            playerB.load();
+        if (this._mantisTimeUpdateListener) {
+            player.removeEventListener('timeupdate', this._mantisTimeUpdateListener);
+            this._mantisTimeUpdateListener = null;
+        }
+        if (this._mantisNearEndListener) {
+            player.removeEventListener('timeupdate', this._mantisNearEndListener);
+            this._mantisNearEndListener = null;
         }
 
-        // Fase 2: variante (playerB) finita → chiudi e avvia musica
-        const phase2 = () => {
+        const overlay = document.getElementById('mantis-black');
+
+        // Anima overlay opacity e volume player in FADE_MS ms, poi chiama onDone
+        const animateFade = (startOp, endOp, startVol, endVol, onDone) => {
+            if (this._mantisFadeAnimId) {
+                cancelAnimationFrame(this._mantisFadeAnimId);
+                this._mantisFadeAnimId = null;
+            }
+            const t0 = performance.now();
+            const step = (now) => {
+                const t = Math.min(1, (now - t0) / FADE_MS);
+                if (overlay) overlay.style.opacity = startOp + (endOp - startOp) * t;
+                player.volume = Math.max(0, Math.min(1, startVol + (endVol - startVol) * t));
+                if (t < 1) {
+                    this._mantisFadeAnimId = requestAnimationFrame(step);
+                } else {
+                    this._mantisFadeAnimId = null;
+                    if (onDone) onDone();
+                }
+            };
+            this._mantisFadeAnimId = requestAnimationFrame(step);
+        };
+
+        // Avvia un video con fade-in (overlay nero → trasparente) non appena il primo frame è pronto
+        const playWithFadeIn = (src, startVol, onEndedCb) => {
+            // Blocca l'altezza del wrapper per evitare reflow durante il cambio src
+            if (wrapper && wrapper.offsetHeight > 0) wrapper.style.minHeight = wrapper.offsetHeight + 'px';
+            player.src = src;
+            player.volume = startVol;
+            player.addEventListener('canplay', () => {
+                if (wrapper) wrapper.style.minHeight = '';
+                animateFade(1, 0, startVol, 1);
+            }, { once: true });
+            player.play().catch(e => console.warn('Video Mantis:', e.message));
+            this._introEndedListener = onEndedCb;
+            player.addEventListener('ended', onEndedCb, { once: true });
+        };
+
+        // Fase 3: dimostrazione finita
+        const phase3End = () => {
             this._introEndedListener = null;
+            this._cleanupMantisEffects();
             this.stopVideo();
             this._afterIntroEnd();
         };
 
-        // OVERLAP secondi prima della fine di playerA: avvia playerB muto e invisibile
-        // così al momento dello swap il frame è già renderizzato
-        const onTimeUpdate = () => {
-            if (!player.duration || player.duration === Infinity) return;
-            if (player.currentTime >= player.duration - OVERLAP) {
-                player.removeEventListener('timeupdate', onTimeUpdate);
-                this._mantisTimeUpdateListener = null;
-                if (playerB && playerB.paused) {
-                    playerB.play().catch(() => {});
-                }
-            }
-        };
-        this._mantisTimeUpdateListener = onTimeUpdate;
-        player.addEventListener('timeupdate', onTimeUpdate);
-
-        // Fase 1: playerA terminato → swap istantaneo con playerB già in riproduzione
-        const phase1 = () => {
-            if (this._mantisTimeUpdateListener) {
-                player.removeEventListener('timeupdate', this._mantisTimeUpdateListener);
-                this._mantisTimeUpdateListener = null;
-            }
-            this._introEndedListener = phase2;
-            if (playerB) {
-                // playerB diventa visibile (mantis-active = absolute+visibile) PRIMA che playerA sparisca
-                // → nessun flash: playerB copre playerA senza alcun frame vuoto
-                playerB.classList.remove('mantis-preload');
-                playerB.classList.add('mantis-active'); // rimane absolute, ora visibile
-                playerB.muted = false;
-                if (playerB.paused) playerB.play().catch(e => console.warn('Video Mantis variant:', e.message));
-                playerB.addEventListener('ended', phase2, { once: true });
-            }
-            // playerA rimane nel layout (visibility:hidden) per mantenere le dimensioni del wrapper
-            player.style.visibility = 'hidden';
+        // Fase 3: avvia dimostrazione con fade-in + shake
+        const startPhase3 = () => {
+            playWithFadeIn(dimosSrc, 0, phase3End);
+            this._startMantisDimostrazioneEffects(player, stage.mantisShakes || []);
         };
 
-        // _introEndedListener gestisce anche lo stop manuale (stopVideo lo rimuove e chiama _afterIntroEnd)
-        this._introEndedListener = phase1;
-        player.addEventListener('ended', phase1, { once: true });
+        // Fase 2: variante finita → fade-out → fase 3
+        const phase2End = () => {
+            this._introEndedListener = null;
+            animateFade(0, 1, 1, 0, startPhase3);
+        };
 
-        // Setup player diretto (senza playVideo, per evitare il suo auto-stopVideo)
+        // Fase 2: avvia variante con fade-in
+        const startPhase2 = () => playWithFadeIn(variantSrc, 0, phase2End);
+
+        // Fase 1: intro finita → fade-out → fase 2
+        const phase1End = () => {
+            this._introEndedListener = null;
+            animateFade(0, 1, 1, 0, startPhase2);
+        };
+
+        // Setup display
         this._duckAudio();
         const wrapper = document.getElementById('video-wrapper');
         const placeholder = document.getElementById('video-placeholder');
@@ -975,10 +1002,66 @@ const App = {
         if (wrapper) wrapper.style.display = '';
         if (placeholder) placeholder.style.display = 'none';
         if (stopBtn) stopBtn.style.display = '';
-        player.src = stage.intro;
         player.style.display = 'block';
-        player.play().catch(e => console.warn('Video Mantis intro:', e.message));
         document.getElementById('stage-active')?.classList.add('stage-video-active');
+
+        // Avvia intro — nessun fade-in (parte direttamente visibile)
+        player.src = stage.intro;
+        player.volume = 1;
+        this._introEndedListener = phase1End;
+        player.addEventListener('ended', phase1End, { once: true });
+        player.play().catch(e => console.warn('Video Mantis intro:', e.message));
+    },
+
+    // Avvia il tracking degli shake durante mantis_dimostrazione
+    _startMantisDimostrazioneEffects(player, shakes) {
+        if (!shakes.length) return;
+        const triggered = new Set();
+        const onTimeUpdate = () => {
+            const t = player.currentTime;
+            shakes.forEach((s, i) => {
+                if (!triggered.has(i) && t >= s.time) {
+                    triggered.add(i);
+                    this._triggerMantisShake();
+                }
+            });
+        };
+        this._mantisTimeUpdateListener = onTimeUpdate;
+        player.addEventListener('timeupdate', onTimeUpdate);
+    },
+
+    _triggerMantisShake() {
+        // Shake schermo
+        const wrapper = document.getElementById('video-wrapper');
+        if (wrapper) {
+            wrapper.classList.remove('mantis-shaking');
+            void wrapper.offsetWidth;
+            wrapper.classList.add('mantis-shaking');
+            wrapper.addEventListener('animationend', () => wrapper.classList.remove('mantis-shaking'), { once: true });
+        }
+        // Volo cursore
+        const cursor = document.getElementById('mantis-cursor');
+        if (cursor) {
+            cursor.classList.remove('flying');
+            void cursor.offsetWidth;
+            cursor.classList.add('flying');
+            cursor.addEventListener('animationend', () => cursor.classList.remove('flying'), { once: true });
+        }
+    },
+
+    _cleanupMantisEffects() {
+        if (this._mantisFadeAnimId) {
+            cancelAnimationFrame(this._mantisFadeAnimId);
+            this._mantisFadeAnimId = null;
+        }
+        const player = document.getElementById('video-player');
+        if (player) player.volume = 1;
+        const cursor = document.getElementById('mantis-cursor');
+        if (cursor) cursor.classList.remove('flying');
+        const overlay = document.getElementById('mantis-black');
+        if (overlay) overlay.style.opacity = '0';
+        const wrapper = document.getElementById('video-wrapper');
+        if (wrapper) wrapper.classList.remove('mantis-shaking');
     },
 
     playIntroThenMusic() {
@@ -1113,10 +1196,12 @@ const App = {
         if (this.newGameMode) {
             const player = document.getElementById('video-player');
             if (player) {
-                player.addEventListener('ended', () => {
+                this._outroEndedListener = () => {
+                    this._outroEndedListener = null;
                     this._outroPlaying = false;
                     this.unlockNextStage();
-                }, { once: true });
+                };
+                player.addEventListener('ended', this._outroEndedListener, { once: true });
             }
         }
     },
@@ -1405,7 +1490,114 @@ const App = {
         const nextStage = this._rewardsPendingNextStage;
         this._rewardsPendingNextStage = null;
         this._rewardsConditionalState = {};
-        if (nextStage) this.showPlayersPopup(nextStage);
+        if (!nextStage) return;
+        // Stage 1→2: salvataggio speciale dopo intro dello stage 2, non qui
+        if (nextStage.id === 2) {
+            this.showPlayersPopup(nextStage);
+        } else {
+            this._triggerInlineSave(nextStage);
+        }
+    },
+
+    // ============================================
+    // INLINE SAVE (Mei Ling automatico tra stage)
+    // ============================================
+    _inlineSaveVideoPath(prefix) {
+        const id = this._inlineSaveNextStage?.id ?? this.currentStage?.id;
+        if (!id || id < 2) return null;
+        if (id > 9) {
+            if (prefix === 'pre-save') return 'video/mei ling/pre-save-04.mp4';
+            return 'video/mei ling/no-save-04.mp4'; // save e no-save entrambi
+        }
+        return `video/mei ling/${prefix}-${String(id).padStart(2, '0')}.mp4`;
+    },
+
+    _triggerInlineSave(nextStage) {
+        this._inlineSaveNextStage = nextStage;
+        this._inInlineSaveMode = true;
+        // Aggiorna subito il titolo e lo status dello stage nella UI
+        if (nextStage) {
+            const title = document.getElementById('active-stage-title');
+            if (title) title.textContent = `STAGE ${String(nextStage.id).padStart(2, '0')} — ${nextStage.name.toUpperCase()}`;
+            const status = document.getElementById('stage-status');
+            if (status) {
+                status.textContent = nextStage.isBoss ? 'BOSS BATTLE' : 'SNEAKING MISSION';
+                status.style.color = nextStage.isBoss ? 'var(--codec-red)' : 'var(--codec-orange)';
+                status.style.borderColor = nextStage.isBoss ? 'rgba(255, 58, 58, 0.3)' : 'rgba(255, 140, 58, 0.3)';
+            }
+        }
+        const src = this._inlineSaveVideoPath('pre-save') || this._randomSaveVideo((CONFIG.saveScreen || {}).intro);
+        if (src) {
+            this._pendingVideoEndCallback = () => this._showInlineSaveQuestion();
+            this.playVideo(src);
+        } else {
+            this._showInlineSaveQuestion();
+        }
+    },
+
+    _inlineSaveFocused: 'yes',
+
+    _inlineSaveFocus(which) {
+        const changed = this._inlineSaveFocused !== which;
+        this._inlineSaveFocused = which;
+        document.getElementById('inline-save-item-yes')?.classList.toggle('focused', which === 'yes');
+        document.getElementById('inline-save-item-no')?.classList.toggle('focused', which === 'no');
+        if (changed) this.playSfx(CONFIG.menuSounds['choice'].file);
+    },
+
+    _showInlineSaveQuestion() {
+        const popup = document.getElementById('inline-save-question');
+        if (popup) popup.style.display = 'flex';
+        this._inlineSaveFocus('yes');
+    },
+
+    _inlineSaveYes() {
+        document.getElementById('inline-save-question').style.display = 'none';
+        this._initAudioCtx();
+        this.cardScreenMode = 'save';
+        this.cardReturnScreen = 'stage-active';
+        this._savedThisVisit = false;
+        this.selectedCard = 1;
+        this.selectedBlock = null;
+        this._skipSaveIntroVideo = true;
+        this._renderCardScreen();
+        this.showScreen('card-screen');
+        setTimeout(() => this._autoPlaySaveIntro(), 300);
+    },
+
+    _inlineSaveNo() {
+        document.getElementById('inline-save-question').style.display = 'none';
+        if (this.currentScreen === 'card-screen') this.showScreen('stage-active');
+        const src = this._inlineSaveVideoPath('no-save') || this._randomSaveVideo((CONFIG.saveScreen || {}).outro);
+        this._inInlineSaveMode = false;
+        if (src) {
+            this._pendingVideoEndCallback = () => this._afterInlineSaveComplete();
+            this.playVideo(src);
+        } else {
+            this._afterInlineSaveComplete();
+        }
+    },
+
+    _afterInlineSaveComplete() {
+        const nextStage = this._inlineSaveNextStage;
+        this._inlineSaveNextStage = null;
+        this._inInlineSaveMode = false;
+        const fromCardScreen = this.currentScreen === 'card-screen';
+        if (fromCardScreen) this.showScreen('stage-active');
+        if (nextStage) {
+            if (fromCardScreen) {
+                setTimeout(() => this.showPlayersPopup(nextStage), 150);
+            } else {
+                this.showPlayersPopup(nextStage);
+            }
+        } else {
+            // Stage 2: avvia musica/gioco
+            if (this.currentStage?.startInAlert) {
+                this.triggerAlert();
+            } else {
+                this.playFirstMusic();
+            }
+        }
     },
 
     openMeiLing() {
@@ -1427,11 +1619,18 @@ const App = {
             if (p) p.removeEventListener('timeupdate', this.musicIntroTimer);
             this.musicIntroTimer = null;
         }
+        if (this._gameOverSoundListener) {
+            const p = document.getElementById('video-player');
+            if (p) p.removeEventListener('timeupdate', this._gameOverSoundListener);
+            this._gameOverSoundListener = null;
+        }
         this.setActiveVideoBtn(null);
 
         const wrapper = document.getElementById('video-wrapper');
         const player = document.getElementById('video-player');
         const stopBtn = document.getElementById('btn-stop-video');
+
+        this._cleanupMantisEffects();
 
         if (player) {
             player.onended = null;
@@ -1447,7 +1646,14 @@ const App = {
                 player.removeEventListener('ended', this._introEndedListener);
                 this._introEndedListener = null;
                 // Intro interrotta manualmente: avvia ambient/musica se non già in corso (senza delay)
-                setTimeout(() => this._afterIntroEnd(true), 0);
+                // Non chiamare durante il flusso inline save: sarebbe _afterIntroEnd per lo stage precedente
+                if (!this._inInlineSaveMode) {
+                    setTimeout(() => this._afterIntroEnd(true), 0);
+                }
+            }
+            if (this._outroEndedListener) {
+                player.removeEventListener('ended', this._outroEndedListener);
+                this._outroEndedListener = null;
             }
             if (this._outroPlaying) {
                 this._outroPlaying = false;
@@ -1480,6 +1686,11 @@ const App = {
         this._unlockStage();
         document.getElementById('stage-active')?.scrollTo({ top: 0, behavior: 'smooth' });
         this._unduckAudio();
+        if (this._pendingVideoEndCallback) {
+            const cb = this._pendingVideoEndCallback;
+            this._pendingVideoEndCallback = null;
+            setTimeout(cb, 0);
+        }
         if (this._eventMusicRestore !== null) {
             if (this.musicLoop) this.musicLoop.setVolume(this._eventMusicRestore);
             this._eventMusicRestore = null;
@@ -1705,13 +1916,7 @@ const App = {
         const container = document.getElementById('alert-section');
         if (!container) return;
 
-        const meiLingVisible = stage.id >= 2;
         container.innerHTML = `
-            <div id="mei-ling-btn-wrapper" style="display:${meiLingVisible ? '' : 'none'}; margin-left:auto">
-                <button class="btn-codec btn-small btn-mei-ling" id="btn-mei-ling" onclick="App.openMeiLing()">
-                    <span class="btn-inner">MEI LING</span>
-                </button>
-            </div>
             <div id="alert-volume-wrap" class="music-controls" style="display:none">
                 <input type="range" id="alert-volume" class="volume-slider" min="0" max="100" value="20"
                     oninput="App.setAlertVolume(this.value)">
@@ -1804,7 +2009,7 @@ const App = {
     },
 
     // Consuma n token azione e aggiorna i bottoni della plancia
-    spendTokens(n, playerName) {
+    spendTokens(n, playerName, actionId = null) {
         let rem = n;
         for (let i = 0; i < this.playerTokenState.length && rem > 0; i++) {
             if (this.playerTokenState[i]) { this.playerTokenState[i] = false; rem--; }
@@ -1814,6 +2019,13 @@ const App = {
         this._updatePlanciaButtonStates(playerName);
         this._refreshEquipmentPanel(playerName);
         this._refreshPlayerBossSections();
+        // Aggiorna stato scatolone: le azioni della plancia escono dallo scatolone
+        // tranne Movimento Furtivo, Scatto e Concentrazione
+        const BOX_SAFE = ['movimento-furtivo', 'scatto', 'concentrazione'];
+        if (actionId && playerName && this.boxState[playerName] && !BOX_SAFE.includes(actionId)) {
+            this.boxState[playerName] = false;
+            this._renderSoldierPhases();
+        }
     },
 
     // Ricalcola disabled su tutti i bottoni della plancia
@@ -1971,15 +2183,17 @@ const App = {
                 ? zoneRestr.disabledItemTypes.includes(eq.itemType)
                 : false;
 
+            const BOX_IDS = ['010', '027'];
             const disabledList = actionList.map(a => {
-                const chargeNeeded = a.usesCharge && eq.charges != null;
-                const remaining    = typeof consumed[id] === 'number' ? consumed[id] : (eq.charges ?? 0);
-                const noCharge     = chargeNeeded && remaining <= 0;
-                const noTokens     = a.cost != null && a.cost > available;
-                const flagBlocked  = a.requiresFlag
+                const chargeNeeded   = a.usesCharge && eq.charges != null;
+                const remaining      = typeof consumed[id] === 'number' ? consumed[id] : (eq.charges ?? 0);
+                const noCharge       = chargeNeeded && remaining <= 0;
+                const noTokens       = a.cost != null && a.cost > available;
+                const flagBlocked    = a.requiresFlag
                     ? !(this.equipmentFlagState[playerName]?.[id]?.[a.requiresFlag])
                     : false;
-                return (eq.consumable && isExhausted) || (a.usesCharge && isExhausted) || noCharge || noTokens || flagBlocked || zoneBlocked;
+                const alreadyInBox   = BOX_IDS.includes(id) && !!this.boxState[playerName];
+                return (eq.consumable && isExhausted) || (a.usesCharge && isExhausted) || noCharge || noTokens || flagBlocked || zoneBlocked || alreadyInBox;
             });
             const allDisabled = disabledList.every(Boolean);
             const btnsHtml = actionList.map((a, ai) => {
@@ -2044,14 +2258,22 @@ const App = {
                 if (!this.currentStage?.isBoss) return null;
                 for (const e of (this.currentStage.bossEnemies || [])) {
                     const r = e.equipReactions?.[equipId];
-                    if (r && (this.bossHpState?.[e.id] ?? 0) > 0) return r;
+                    if (!r || (this.bossHpState?.[e.id] ?? 0) <= 0) continue;
+                    if (e.defensePopup && !this.mantisDefenseSolved) continue;
+                    return r;
                 }
                 return null;
             })();
             if (followUp) {
+                const followUpFile  = typeof followUp === 'string' ? followUp : followUp.file;
+                const followUpDelay = typeof followUp === 'object' ? (followUp.delay ?? null) : null;
                 const audio = new Audio(a.sound);
                 audio.volume = 0.85;
-                audio.addEventListener('ended', () => this.playSfx(followUp), { once: true });
+                if (followUpDelay !== null) {
+                    setTimeout(() => this.playSfx(followUpFile), followUpDelay);
+                } else {
+                    audio.addEventListener('ended', () => this.playSfx(followUpFile), { once: true });
+                }
                 audio.play().catch(() => {});
             } else if (bossReaction) {
                 const reactionSound = typeof bossReaction === 'string' ? bossReaction : bossReaction.sound;
@@ -2110,6 +2332,13 @@ const App = {
         if (a.attack && a.category !== 'missile') {
             this.showAttackResultPopup(playerName, `eq-${equipId}`, a);
         }
+
+        // Scatolone: NASCONDITI attiva il flag; tutte le altre azioni lo disattivano
+        // (il reset per azioni della plancia è gestito in spendTokens tramite actionId)
+        const BOX_IDS = ['010', '027'];
+        const wasInBox = !!this.boxState[playerName];
+        this.boxState[playerName] = BOX_IDS.includes(equipId);
+        if (wasInBox !== !!this.boxState[playerName]) this._renderSoldierPhases();
 
         this._refreshEquipmentPanel(playerName);
     },
@@ -2722,7 +2951,7 @@ const App = {
             }
 
             const spendCall = (typeof a.cost === 'number' && a.cost > 0)
-                ? `App.spendTokens(${a.cost},'${playerName}');`
+                ? `App.spendTokens(${a.cost},'${playerName}','${a.id}');`
                 : '';
             const noiseCall = a.noise
                 ? `App._trackNoise('${playerName}');`
@@ -3121,10 +3350,12 @@ const App = {
         }).join('');
 
         // Fase 3 — attivare guardie (singola riga per tutte)
+        const anyInBox = Object.values(this.boxState).some(Boolean);
         let guardsHtml = '';
         if (totalGuards > 0) {
             const actionsHtml = this.GUARD_ACTIONS.map(a => {
                 if (a.alertOnly && !inAlert) return '';
+                if (a.boxOnly && !anyInBox) return '';
                 const isSel = this.soldierGuardAction === a.id;
                 const snd   = a.sound ? `App._playActionSound('${a.sound}');` : '';
                 const extra = a.id === 'attacca' ? ' guard-attacca' : '';
@@ -3246,6 +3477,8 @@ const App = {
         this._bossCounterFirstUsed  = {};
         this._bossFirstHitUsed      = {};
         this._ocelotZeroStreak     = 0;
+        this.mantisDefenseStep = 0;
+        this.mantisDefenseSolved = false;
         const bossEnemies = stage.bossEnemies || [];
         const playerCount = players.length;
         bossEnemies.forEach(e => {
@@ -3337,6 +3570,12 @@ const App = {
 
     _buildBossEnemyCard(enemy) {
         const hp = this.bossHpState[enemy.id] ?? 0;
+        const defenseVal = (enemy.id === 'mantis' && this.mantisDefenseSolved) ? 4 : enemy.defense;
+        const defenseHtml = defenseVal != null
+            ? (enemy.defensePopup
+                ? `<button class="boss-defense boss-defense-btn" onclick="App.openMantisDefensePopup()"${this.mantisDefenseSolved ? ' disabled' : ''}>DIFESA: ${defenseVal}</button>`
+                : `<div class="boss-defense">DIFESA: ${defenseVal}</div>`)
+            : '';
         return `<div class="player-card boss-enemy-card">
             <div class="player-card-name" style="color:var(--codec-red)">${enemy.name}</div>
             <div class="hp-tracker">
@@ -3344,7 +3583,109 @@ const App = {
                 <span class="hp-value" id="boss-hp-${enemy.id}">${hp}</span>
                 <button class="hp-btn" onclick="App.adjustBossHp('${enemy.id}',+1)">+</button>
             </div>
+            ${defenseHtml}
         </div>`;
+    },
+
+    openMantisDefensePopup() {
+        const step = this.mantisDefenseStep ?? 0;
+        if (step === 0) this._mantisDefenseShowStep0();
+        else if (step === 1) this._mantisDefenseShowStep1();
+        else if (step === 2) this._mantisDefenseShowStep2();
+    },
+
+    _mantisDefenseShowStep0() {
+        const box = document.getElementById('mantis-defense-popup-box');
+        if (!box) return;
+        box.innerHTML = `
+            <div class="enemy-phase-popup-text" style="max-width:20rem">
+                Hai consultato il codec per trovare gli indizi su come sconfiggere Psycho Mantis?
+            </div>
+            <div style="display:flex;gap:0.5rem;margin-top:0.5rem">
+                <button class="btn-codec enemy-phase-confirm-btn" onclick="App._mantisDefenseStep0Yes()">
+                    <span class="btn-inner">▶ SÌ</span>
+                </button>
+                <button class="btn-codec enemy-phase-confirm-btn" onclick="App._closeMantisDefensePopup()">
+                    <span class="btn-inner">▶ NO</span>
+                </button>
+            </div>`;
+        document.getElementById('mantis-defense-popup').style.display = 'flex';
+    },
+
+    _mantisDefenseStep0Yes() {
+        this.mantisDefenseStep = 1;
+        this._mantisDefenseShowStep1();
+    },
+
+    _mantisDefenseShowStep1() {
+        const box = document.getElementById('mantis-defense-popup-box');
+        if (!box) return;
+        box.innerHTML = `
+            <div class="enemy-phase-popup-text" style="max-width:20rem">
+                Quali sono le parole chiave dell'indizio?
+            </div>
+            <input type="text" id="mantis-keyword-input" class="mantis-keyword-input"
+                placeholder="Scrivi qui..." autocomplete="off"
+                onkeydown="if(event.key==='Enter')App._mantisDefenseCheckKeyword()">
+            <div id="mantis-keyword-wrong" style="display:none;color:var(--codec-red);font-family:var(--font-mono);font-size:0.75rem">
+                Risposta errata.
+            </div>
+            <div style="display:flex;gap:0.5rem;margin-top:0.2rem">
+                <button class="btn-codec enemy-phase-confirm-btn" onclick="App._mantisDefenseCheckKeyword()">
+                    <span class="btn-inner">▶ CONFERMA</span>
+                </button>
+                <button class="btn-codec enemy-phase-confirm-btn" onclick="App._closeMantisDefensePopup()">
+                    <span class="btn-inner">▶ ANNULLA</span>
+                </button>
+            </div>`;
+        document.getElementById('mantis-defense-popup').style.display = 'flex';
+        setTimeout(() => document.getElementById('mantis-keyword-input')?.focus(), 50);
+    },
+
+    _mantisDefenseCheckKeyword() {
+        const inp = document.getElementById('mantis-keyword-input');
+        if (!inp) return;
+        const val = inp.value.trim().toUpperCase().replace(/\s+/g, ' ');
+        if (val === 'GUARDARE SOTTO IL FONDO') {
+            this.mantisDefenseStep = 2;
+            this._mantisDefenseShowStep2();
+        } else {
+            const err = document.getElementById('mantis-keyword-wrong');
+            if (err) err.style.display = 'block';
+            inp.value = '';
+            inp.focus();
+        }
+    },
+
+    _mantisDefenseShowStep2() {
+        const box = document.getElementById('mantis-defense-popup-box');
+        if (!box) return;
+        box.innerHTML = `
+            <div class="enemy-phase-popup-text" style="max-width:20rem">
+                Hai alzato il fondo della scatola dove sono riposte tutte le miniature, i segnalini e le carte?
+            </div>
+            <div style="display:flex;gap:0.5rem;margin-top:0.5rem">
+                <button class="btn-codec enemy-phase-confirm-btn" onclick="App._mantisDefenseSolve()">
+                    <span class="btn-inner">▶ SÌ</span>
+                </button>
+                <button class="btn-codec enemy-phase-confirm-btn" onclick="App._closeMantisDefensePopup()">
+                    <span class="btn-inner">▶ NO</span>
+                </button>
+            </div>`;
+        document.getElementById('mantis-defense-popup').style.display = 'flex';
+    },
+
+    _mantisDefenseSolve() {
+        this.mantisDefenseSolved = true;
+        this.mantisDefenseStep = 0;
+        this._closeMantisDefensePopup();
+        // Aggiorna il bottone difesa nella sidebar
+        const btn = document.querySelector('.boss-defense-btn');
+        if (btn) { btn.textContent = 'DIFESA: 4'; btn.disabled = true; }
+    },
+
+    _closeMantisDefensePopup() {
+        document.getElementById('mantis-defense-popup').style.display = 'none';
     },
 
     _buildPlayerBossSectionsHtml(stage) {
@@ -3432,7 +3773,7 @@ const App = {
             const cardsHtml = (e.cards && e.cards.length)
                 ? `<div class="boss-cards-row">
                        <select class="boss-cards-select" id="boss-cards-select-${e.id}">
-                           <option value="">— Frase della carta —</option>
+                           <option value="">— ${e.cardsLabel ?? 'Frase della carta'} —</option>
                            ${e.cards.map((c, i) => `<option value="${i}">${c.label}</option>`).join('')}
                        </select>
                        <button class="btn-codec boss-play-btn" onclick="App.playBossCard('${e.id}')">▶</button>
@@ -3471,7 +3812,16 @@ const App = {
 
     playBossAttack(enemyId) {
         const enemy = this.currentStage?.bossEnemies?.find(e => e.id === enemyId);
-        if (enemy?.attackSound) this.playSfx(enemy.attackSound);
+        if (!enemy?.attackSound) return;
+        if (enemy.aboveHalfAttackSound) {
+            const hp    = this.bossHpState?.[enemyId] ?? 0;
+            const maxHp = this.bossMaxHpState?.[enemyId] ?? 0;
+            if (maxHp > 0 && hp > maxHp / 2) {
+                this._playSfxOnce(enemy.aboveHalfAttackSound, () => this.playSfx(enemy.attackSound));
+                return;
+            }
+        }
+        this.playSfx(enemy.attackSound);
     },
 
     playBossMovement(enemyId) {
@@ -3643,6 +3993,24 @@ const App = {
         const idx = sel ? parseInt(sel.value) : NaN;
         if (isNaN(idx) || !enemy.cards[idx]) return;
         const card = enemy.cards[idx];
+        // Carta con sequenza blackout → video → sfx (stesso meccanismo di sfxOnMusicStart)
+        if (card.thenVideo) {
+            this._playSfxOnce(card.file, () => {
+                if (this.musicLoop && this.musicLoop.isPlaying()) {
+                    this._eventMusicRestore = this.musicLoop.getVolume();
+                    this.musicLoop.setVolume(0);
+                }
+                if (card.thenSfx) {
+                    this._pendingVideoEndCallback = () => this._playSfxOnce(card.thenSfx);
+                }
+                this.playVideo(card.thenVideo);
+            });
+            return;
+        }
+        if (card.filesAll) {
+            card.filesAll.forEach(f => { const a = new Audio(f); a.volume = 1.0; a.play().catch(() => {}); });
+            return;
+        }
         const src = card.files
             ? card.files[Math.floor(Math.random() * card.files.length)]
             : card.file;
@@ -3686,6 +4054,8 @@ const App = {
                         this._playBossHalfVideo(enemy.firstHitVideo);
                     } else if (crossedHalf && enemy.hitHalfVideo) {
                         this._playBossHalfVideo(enemy.hitHalfVideo);
+                    } else if (crossedHalf && enemy.hitHalfSound) {
+                        setTimeout(() => this.playSfx(enemy.hitHalfSound), 500);
                     }
                 } else {
                     const maxHp = this.bossMaxHpState?.[enemyId] ?? 0;
@@ -3916,6 +4286,7 @@ const App = {
             const actionCategory = resolvedAction?.category ?? null;
             const enemies = this.currentStage.bossEnemies.filter(e => {
                 if ((this.bossHpState[e.id] ?? 0) <= 0) return false;
+                if (e.defensePopup && !this.mantisDefenseSolved) return false;
                 if (e.excludeFrom && actionCategory && e.excludeFrom.includes(actionCategory)) return false;
                 if (!e.damageFrom) return true;
                 return actionCategory && e.damageFrom.includes(actionCategory);
@@ -3926,9 +4297,11 @@ const App = {
                 const sounds = allEnemies.flatMap(e => e.blockedAttackSounds || []);
                 if (sounds.length > 0) {
                     const src = sounds[Math.floor(Math.random() * sounds.length)];
-                    const sfx = new Audio(src);
-                    sfx.volume = 0.85;
-                    sfx.play().catch(() => {});
+                    setTimeout(() => {
+                        const sfx = new Audio(src);
+                        sfx.volume = 0.85;
+                        sfx.play().catch(() => {});
+                    }, 500);
                 }
                 return;
             }
@@ -4006,10 +4379,11 @@ const App = {
                 if (isFirstHit) this._bossFirstHitUsed[enemyId] = true;
                 this.adjustBossHp(enemyId, -amount, false);
                 const newHp = this.bossHpState?.[enemyId] ?? 0;
+                const crossedHalf = maxHp > 0 && prevHp > maxHp / 2 && newHp > 0 && newHp <= maxHp / 2;
                 if (newHp > 0) {
                     if (isFirstHit && enemy.firstHitVideo) {
                         this._playBossHalfVideo(enemy.firstHitVideo);
-                    } else if (maxHp > 0 && prevHp > maxHp / 2 && newHp <= maxHp / 2 && enemy.hitHalfVideo) {
+                    } else if (crossedHalf && enemy.hitHalfVideo) {
                         this._playBossHalfVideo(enemy.hitHalfVideo);
                     }
                 }
@@ -4032,6 +4406,8 @@ const App = {
                             lastAudio = a;
                             if (newHp === 0) {
                                 a.addEventListener('ended', () => this._triggerBossKo(enemy), { once: true });
+                            } else if (crossedHalf && enemy.hitHalfSound) {
+                                a.addEventListener('ended', () => this.playSfx(enemy.hitHalfSound), { once: true });
                             } else {
                                 const dmgEntry = (enemy.damageSounds || []).find(ds => ds.damage === amount);
                                 if (dmgEntry) {
@@ -4039,6 +4415,9 @@ const App = {
                                     const snd = sounds[Math.floor(Math.random() * sounds.length)];
                                     const delay = dmgEntry.delay ?? 1000;
                                     a.addEventListener('ended', () => setTimeout(() => this.playSfx(snd), delay), { once: true });
+                                } else if (enemy.hitExtraSounds?.length) {
+                                    const extra = enemy.hitExtraSounds[Math.floor(Math.random() * enemy.hitExtraSounds.length)];
+                                    a.addEventListener('ended', () => setTimeout(() => this.playSfx(extra), 300), { once: true });
                                 }
                             }
                         }
@@ -4046,7 +4425,38 @@ const App = {
                     }, pairT + WOUND_OFFSET);
                 }
             } else {
-                this.adjustBossHp(enemyId, -amount);
+                if (action?.attackType === 'physical') {
+                    const colpo = new Audio('audio/sfx/colpo-fisico.wav');
+                    colpo.volume = 0.85;
+                    colpo.play().catch(() => {});
+                }
+                const enemyForExtra = this.currentStage?.bossEnemies?.find(e => e.id === enemyId);
+                if (enemyForExtra?.hitExtraSounds?.length && enemyForExtra.hitSound) {
+                    const prevHpW  = this.bossHpState?.[enemyId] ?? 0;
+                    const maxHpW   = this.bossMaxHpState?.[enemyId] ?? 0;
+                    this.adjustBossHp(enemyId, -amount, false);
+                    const newHp    = this.bossHpState?.[enemyId] ?? 0;
+                    const crossedHalfW = maxHpW > 0 && prevHpW > maxHpW / 2 && newHp > 0 && newHp <= maxHpW / 2;
+                    const hits = Math.min(Math.max(amount, 1), 3);
+                    const GAP = 400;
+                    for (let i = 0; i < hits; i++) {
+                        const isLast = i === hits - 1;
+                        setTimeout(() => {
+                            this._playSfxOnce(enemyForExtra.hitSound, isLast ? () => {
+                                if (newHp === 0) {
+                                    this._triggerBossKo(enemyForExtra);
+                                } else if (crossedHalfW && enemyForExtra.hitHalfSound) {
+                                    setTimeout(() => this.playSfx(enemyForExtra.hitHalfSound), 300);
+                                } else {
+                                    const extra = enemyForExtra.hitExtraSounds[Math.floor(Math.random() * enemyForExtra.hitExtraSounds.length)];
+                                    setTimeout(() => this.playSfx(extra), 300);
+                                }
+                            } : null);
+                        }, i * GAP);
+                    }
+                } else {
+                    this.adjustBossHp(enemyId, -amount);
+                }
             }
             // Reazione Ocelot quando Baker viene colpito con arma a distanza
             if (enemyId === 'baker') {
@@ -4427,9 +4837,8 @@ const App = {
 
         const unlocked = this.session?.unlockedEquipment || [];
         const players  = this._pendingSelectedPlayers || [];
-        // Owner items contano solo per i giocatori NON al debutto (già sbloccati)
         const hasOwnerItems = players.some(p =>
-            !this._isCharacterDebut(p) && Object.values(EQUIPMENT).some(eq => eq.owner === p)
+            Object.values(EQUIPMENT).some(eq => eq.owner === p)
         );
         if (unlocked.length > 0 || hasOwnerItems) {
             this._showEquipmentPopup();
@@ -4442,23 +4851,7 @@ const App = {
         const players = this._pendingSelectedPlayers;
         const isExtreme = this.session?.difficulty === 'EXTREME';
         const maxSlots  = isExtreme ? 2 : 3;
-        // Segna tutti i giocatori selezionati come "al debutto avvenuto"
-        // e auto-assegna baseEquipment ai debutanti (popup non mostrato)
-        if (this.session) {
-            const debuted = this.session.debutedCharacters || (this.session.debutedCharacters = []);
-            players.forEach(p => {
-                if (!debuted.includes(p)) debuted.push(p);
-                if (this._isCharacterDebut(p)) {
-                    const ch = CHARACTERS[p];
-                    if (ch?.baseEquipment?.length > 0) {
-                        if (!this.playerEquipment) this.playerEquipment = {};
-                        this.playerEquipment[p] = [...ch.baseEquipment.slice(0, maxSlots)];
-                        while (this.playerEquipment[p].length < maxSlots) this.playerEquipment[p].push(null);
-                    }
-                }
-            });
-            this._persistSession();
-        }
+        if (this.session) this._persistSession();
         const stageId = this._pendingStageId;
         this._pendingStageId = null;
         this._pendingSelectedPlayers = null;
@@ -4470,13 +4863,6 @@ const App = {
     // EQUIPMENT SELECTION POPUP
     // ============================================
 
-    _isCharacterDebut(playerName) {
-        const ch = CHARACTERS[playerName];
-        const stageId = this._pendingStageId || this.currentStage?.id || 0;
-        // È debutto solo se è esattamente lo stage di prima apparizione del personaggio
-        return ch?.debutStage != null && stageId === ch.debutStage;
-    },
-
     _showEquipmentPopup() {
         const players = this._pendingSelectedPlayers;
 
@@ -4485,15 +4871,7 @@ const App = {
 
         this.playerEquipment = {};
         players.forEach(p => {
-            const isDebut = this._isCharacterDebut(p);
-            const ch = CHARACTERS[p];
-            if (isDebut && ch?.baseEquipment?.length > 0) {
-                // Slot pre-compilati con l'equipaggiamento base, bloccati
-                this.playerEquipment[p] = [...ch.baseEquipment.slice(0, maxSlots)];
-                while (this.playerEquipment[p].length < maxSlots) this.playerEquipment[p].push(null);
-            } else {
-                this.playerEquipment[p] = Array(maxSlots).fill(null);
-            }
+            this.playerEquipment[p] = Array(maxSlots).fill(null);
         });
 
         this._renderEquipmentPopup();
@@ -4508,24 +4886,12 @@ const App = {
         const content   = document.getElementById('equipment-popup-content');
 
         content.innerHTML = players.map(p => {
-            const isDebut = this._isCharacterDebut(p);
             const color   = this.PLAYER_COLORS[p] || 'var(--codec-green)';
             const slots   = (this.playerEquipment[p] || [null, null, null]).slice(0, maxSlots);
+            const ownerItemsForPlayer = Object.keys(EQUIPMENT).filter(id => EQUIPMENT[id].owner === p && !unlocked.includes(id));
+            const isDebut = ownerItemsForPlayer.length > 0;
 
             const slotsHtml = slots.map((slotId, i) => {
-                if (isDebut) {
-                    const eq = slotId ? EQUIPMENT[slotId] : null;
-                    return `<div class="eq-slot eq-slot-locked">
-                        <span class="eq-slot-num">${i + 1}</span>
-                        <div class="eq-slot-display">
-                            ${eq
-                                ? `<span class="eq-id">${slotId}</span><span class="eq-name">${eq.name}</span>`
-                                : `<span class="eq-empty">—</span>`}
-                        </div>
-                        ${slotId ? `<span class="eq-lock-icon">🔒</span>` : ''}
-                    </div>`;
-                }
-
                 const isInactive = i > 0 && !slots[i - 1];
                 const usedIds    = this._getAllUsedEquipment(p, i);
                 // Include anche gli item con owner === p non ancora nell'unlocked pool
@@ -4918,26 +5284,60 @@ const App = {
                 if (!soundPlayed && video.currentTime >= triggerAt) {
                     soundPlayed = true;
                     video.removeEventListener('timeupdate', onTimeUpdate);
+                    this._gameOverSoundListener = null;
                     this.playSfx(file);
                 }
             };
+            this._gameOverSoundListener = onTimeUpdate;
             video.addEventListener('timeupdate', onTimeUpdate);
         }
-        // Video Game Over — al termine mostra popup selezione personaggi/equipaggiamento
+        // Video Game Over — al termine o stop manuale: se non ancora salvato → Mei Ling, altrimenti personaggi
         const stageAtGameOver = this.currentStage;
-        this.setActiveVideoBtn(document.getElementById('btn-game-over'));
-        const videoEl = document.getElementById('video-player');
-        if (videoEl) {
-            videoEl.addEventListener('ended', () => {
-                this._unlockStage();
-                this.hidePlayerSidebar();
+        this._pendingVideoEndCallback = () => {
+            this.hidePlayerSidebar();
+            const savedFor = this.session?.savedForStage ?? 0;
+            if (savedFor >= stageAtGameOver.id) {
                 this.showPlayersPopup(stageAtGameOver);
-            }, { once: true });
-        }
+            } else if (stageAtGameOver.id === 2) {
+                // Stage 2: il salvataggio scatta dopo l'intro, non prima dei personaggi
+                this.showPlayersPopup(stageAtGameOver);
+            } else {
+                this._triggerInlineSave(stageAtGameOver);
+            }
+        };
+        this.setActiveVideoBtn(document.getElementById('btn-game-over'));
         this.playVideo('video/Game_Over.mp4');
     },
 
     _sfxPool: {},
+
+    // Riproduce un file audio una volta sola via Web Audio API e chiama onEnded al termine.
+    // Fallback su HTML5 Audio se il buffer non è ancora in cache.
+    _playSfxOnce(file, onEnded) {
+        const play = (buffer) => {
+            try {
+                if (this._audioCtx.state === 'suspended') this._audioCtx.resume();
+                const src = this._audioCtx.createBufferSource();
+                src.buffer = buffer;
+                src.connect(this._audioCtx.destination);
+                if (onEnded) src.onended = onEnded;
+                src.start(0);
+            } catch(e) {
+                console.warn('_playSfxOnce WAA:', e);
+                onEnded?.();
+            }
+        };
+        if (this._audioCtx && this._bufferCache[file]) {
+            play(this._bufferCache[file]);
+        } else if (this._audioCtx) {
+            this._loadBuffer(file).then(play).catch(() => onEnded?.());
+        } else {
+            // Fallback HTML5
+            const a = new Audio(file);
+            if (onEnded) a.addEventListener('ended', onEnded, { once: true });
+            a.play().catch(() => onEnded?.());
+        }
+    },
 
     playSfx(file, track, volume) {
         // Web Audio API: zero latency se il buffer è già decodificato in cache
@@ -4982,13 +5382,31 @@ const App = {
         list.forEach(sfx => {
             const t = setTimeout(() => {
                 if (this.currentStage !== stage) return;
-                this.playSfx(sfx.file, null, sfx.volume);
-                if (sfx.interval) {
-                    const id = setInterval(() => {
-                        if (this.currentStage !== stage) { clearInterval(id); return; }
-                        this.playSfx(sfx.file, null, sfx.volume);
-                    }, sfx.interval);
-                    this._sfxOnMusicStartTimers.push({ type: 'interval', id });
+                if (sfx.thenVideo) {
+                    // Suona l'audio una volta, poi avvia il video (volume musica → 0), poi (opzionale) un altro audio
+                    this._playSfxOnce(sfx.file, () => {
+                        if (this.currentStage !== stage) return;
+                        // Porta il volume a 0 senza fermare il loop; stopVideo lo ripristinerà via _eventMusicRestore
+                        if (this.musicLoop && this.musicLoop.isPlaying()) {
+                            this._eventMusicRestore = this.musicLoop.getVolume();
+                            this.musicLoop.setVolume(0);
+                        }
+                        if (sfx.thenSfx) {
+                            this._pendingVideoEndCallback = () => {
+                                if (this.currentStage === stage) this._playSfxOnce(sfx.thenSfx);
+                            };
+                        }
+                        this.playVideo(sfx.thenVideo);
+                    });
+                } else {
+                    this.playSfx(sfx.file, null, sfx.volume);
+                    if (sfx.interval) {
+                        const id = setInterval(() => {
+                            if (this.currentStage !== stage) { clearInterval(id); return; }
+                            this.playSfx(sfx.file, null, sfx.volume);
+                        }, sfx.interval);
+                        this._sfxOnMusicStartTimers.push({ type: 'interval', id });
+                    }
                 }
             }, sfx.delay ?? 0);
             this._sfxOnMusicStartTimers.push({ type: 'timeout', id: t });
@@ -5016,6 +5434,20 @@ const App = {
     // KEYBOARD HANDLER
     // ============================================
     handleKeydown(e) {
+        // Inline save popup: intercetta prima di tutto
+        const inlineSavePopup = document.getElementById('inline-save-question');
+        if (inlineSavePopup && inlineSavePopup.style.display !== 'none') {
+            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                this._inlineSaveFocus(this._inlineSaveFocused === 'yes' ? 'no' : 'yes');
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (this._inlineSaveFocused === 'yes') this._inlineSaveYes();
+                else this._inlineSaveNo();
+            }
+            return;
+        }
+
         // Main menu navigation
         if (this.currentScreen === 'main-menu') {
             if (e.key === 'ArrowUp') {
@@ -5149,6 +5581,8 @@ const App = {
     _newSession() {
         return {
             stage: 1,
+            difficulty: '',
+            savedForStage: 0,    // ultimo stage per cui è stato effettuato un salvataggio
             vr_mission_unlocked: 0,
             alerts: 0,
             kills: 0,
@@ -5161,7 +5595,6 @@ const App = {
             timestamp: new Date().toISOString(),
             // Campagna: persistono tra gli stage
             unlockedEquipment: [],   // ID equipaggiamenti sbloccati attraverso le ricompense
-            debutedCharacters: [],   // personaggi che hanno già giocato almeno uno stage
         };
     },
 
@@ -5220,10 +5653,16 @@ const App = {
     },
 
     _autoPlaySaveIntro() {
-        const sc = CONFIG.saveScreen || {};
         const unlockTabs = () => {
             document.querySelectorAll('.card-tab').forEach(t => { t.disabled = false; });
         };
+        if (this._skipSaveIntroVideo) {
+            this._skipSaveIntroVideo = false;
+            unlockTabs();
+            this.focusCard(1);
+            return;
+        }
+        const sc = CONFIG.saveScreen || {};
         const src = this._randomSaveVideo(sc.intro);
         if (src) {
             this.setActiveVideoBtn(document.getElementById('save-btn-intro'));
@@ -5242,19 +5681,26 @@ const App = {
     },
 
     playSaveOutro() {
-        const src = this._randomSaveVideo(CONFIG.saveScreen && CONFIG.saveScreen.outro);
-        if (!src) return;
-        const returnTo = this.cardReturnScreen;
-        this._saveOutroActive = (returnTo === 'stage-active');
-        this.setActiveVideoBtn(document.getElementById('save-btn-outro'));
-        this._playSaveVideo(src, returnTo === 'stage-active' ? () => {
+        const isInline = this._inInlineSaveMode;
+        const src = (isInline && this._inlineSaveVideoPath('save')) || this._randomSaveVideo(CONFIG.saveScreen && CONFIG.saveScreen.outro);
+        const onEnd = () => {
             this._saveOutroActive = false;
-            this.cardReturnScreen = 'main-menu';
-            this.showScreen('stage-active');
-        } : null);
+            if (isInline) {
+                this._afterInlineSaveComplete();
+            } else {
+                this.cardReturnScreen = 'main-menu';
+                this.showScreen('stage-active');
+            }
+        };
+        if (!src) { onEnd(); return; }
+        const returnTo = this.cardReturnScreen;
+        this._saveOutroActive = (returnTo === 'stage-active') || isInline;
+        this.setActiveVideoBtn(document.getElementById('save-btn-outro'));
+        this._playSaveVideo(src, (returnTo === 'stage-active' || isInline) ? onEnd : null);
     },
 
     _playNotSaveOutro() {
+        if (this._inInlineSaveMode) { this._inlineSaveNo(); return; }
         this._noSaveCount++;
         const count = this._noSaveCount;
         const sc = CONFIG.saveScreen || {};
@@ -5308,10 +5754,18 @@ const App = {
         if (placeholder) placeholder.style.display = 'none';
         if (player) {
             player.onended = null; // rimuove handler precedente prima di assegnarne uno nuovo
+            player.onerror = null;
             player.src = src;
             player.style.display = 'block';
             player.play().catch(e => console.warn('Save video:', e.message));
             player.onended = () => {
+                this._saveVideoEnding = true;
+                this.stopSaveVideo();
+                this._saveVideoEnding = false;
+                if (onEnd) onEnd();
+            };
+            player.onerror = () => {
+                player.onerror = null;
                 this._saveVideoEnding = true;
                 this.stopSaveVideo();
                 this._saveVideoEnding = false;
@@ -5342,8 +5796,12 @@ const App = {
         this._lockCardControls(false);
         // Se outro (salvato o non) viene stoppato MANUALMENTE (non a fine naturale), torna a stage-active
         if (!this._saveVideoEnding && (wasNotSaveOutro || wasSaveOutro)) {
-            this.cardReturnScreen = 'main-menu';
-            this.showScreen('stage-active');
+            if (wasSaveOutro && this._inInlineSaveMode) {
+                this._afterInlineSaveComplete();
+            } else {
+                this.cardReturnScreen = 'main-menu';
+                this.showScreen('stage-active');
+            }
         }
     },
 
@@ -5381,8 +5839,12 @@ const App = {
                 if (this._savedThisVisit) {
                     // Ha già salvato in questa visita: torna senza rimproverare
                     this._savedThisVisit = false;
-                    this.cardReturnScreen = 'main-menu';
-                    this.showScreen('stage-active');
+                    if (this._inInlineSaveMode) {
+                        this._afterInlineSaveComplete();
+                    } else {
+                        this.cardReturnScreen = 'main-menu';
+                        this.showScreen('stage-active');
+                    }
                 } else {
                     this._playNotSaveOutro();
                 }
@@ -5584,6 +6046,19 @@ const App = {
         }
     },
 
+    _blockRightHtml(block) {
+        const disc = (block.stage >= 12) ? 'DISC II' : 'DISC I';
+        const diff = block.difficulty || '—';
+        const rounds = block.rounds || 0;
+        const hh = String(Math.floor(rounds / 60)).padStart(2, '0');
+        const mm = String(rounds % 60).padStart(2, '0');
+        return `<div class="block-right">
+            <span class="block-disc">${disc}</span>
+            <span class="block-difficulty">${diff}</span>
+            <span class="block-time">${hh}:${mm}</span>
+        </div>`;
+    },
+
     _buildCardBlocks() {
         const container = document.getElementById('card-blocks');
         if (!container) return;
@@ -5604,16 +6079,21 @@ const App = {
                     const focCls = this.focusedBlock === id ? ' focused' : '';
                     this._visibleBlockIds.push(id);
                     rows.push(`<div class="card-block used${focCls}" id="card-block-${id}" onclick="App.selectBlock('${id}')" onmouseover="App.focusBlock('${id}')">
-                        <span class="block-num">BLOCK ${num}</span>
-                        <span class="block-stage-name">${stageName}</span>
+                        <div class="block-left">
+                            <span class="block-num">BLOCK ${num}</span>
+                            <span class="block-stage-name">${stageName}</span>
+                        </div>
+                        ${this._blockRightHtml(block)}
                     </div>`);
                 } else if (!firstEmptyFound) {
                     firstEmptyFound = true;
                     const focCls = this.focusedBlock === id ? ' focused' : '';
                     this._visibleBlockIds.push(id);
                     rows.push(`<div class="card-block empty new-block${focCls}" id="card-block-${id}" onclick="App.selectBlock('${id}')" onmouseover="App.focusBlock('${id}')">
-                        <span class="block-num">BLOCK ${num}</span>
-                        <span class="block-new">[NEW BLOCK]</span>
+                        <div class="block-left">
+                            <span class="block-num">BLOCK ${num}</span>
+                            <span class="block-new">[NEW BLOCK]</span>
+                        </div>
                     </div>`);
                 }
                 // altri blocchi vuoti: non mostrati
@@ -5627,21 +6107,24 @@ const App = {
                 const block = card[id];
                 const disabledClass = !block ? 'card-block--disabled' : '';
                 if (block) this._visibleBlockIds.push(id);
-                let info = '';
+                let leftContent = '';
                 if (block) {
                     const stage = STAGES.find(s => s.id === block.stage);
                     const stageName = stage ? stage.name : `STAGE ${String(block.stage).padStart(2, '0')}`;
                     const date = new Date(block.timestamp).toLocaleDateString('it-IT');
-                    info = `<span class="block-stage">${stageName}</span>
-                            <span class="block-date">${date}</span>`;
+                    leftContent = `<span class="block-stage">${stageName}</span>
+                                   <span class="block-date">${date}</span>`;
                 } else {
-                    info = `<span class="block-empty">— VUOTO —</span>`;
+                    leftContent = `<span class="block-empty">— VUOTO —</span>`;
                 }
                 const hoverAttr = block ? ` onmouseover="App.focusBlock('${id}')"` : '';
                 return `<div class="card-block ${block ? 'used' : 'empty'} ${disabledClass}"
                             id="card-block-${id}" onclick="App.selectBlock('${id}')"${hoverAttr}>
-                            <span class="block-num">BLOCK ${String(i + 1).padStart(2, '0')}</span>
-                            ${info}
+                            <div class="block-left">
+                                <span class="block-num">BLOCK ${String(i + 1).padStart(2, '0')}</span>
+                                ${leftContent}
+                            </div>
+                            ${block ? this._blockRightHtml(block) : ''}
                         </div>`;
             }).join('');
         }
@@ -5710,6 +6193,14 @@ const App = {
         this.playSfx(CONFIG.menuSounds['confirm-save'].file);
         this._noSaveCount = 0;
         this._savedThisVisit = true;
+        // Aggiorna stage e savedForStage con il prossimo stage (quello che si sta per iniziare)
+        if (this._inInlineSaveMode && this.session) {
+            const targetId = this._inlineSaveNextStage?.id ?? this.session.stage;
+            if (targetId) {
+                this.session.stage = targetId;
+                this.session.savedForStage = targetId;
+            }
+        }
         this.saveToBlock(this.selectedCard, blockId);
         const confirmArea = document.getElementById('block-confirm-area');
         if (confirmArea) { confirmArea.style.display = 'none'; confirmArea.innerHTML = ''; }
@@ -5762,6 +6253,12 @@ const App = {
         this.initMenuTouch();
 
         document.addEventListener('keydown', (e) => this.handleKeydown(e));
+
+        // Cursore personalizzato globale
+        document.addEventListener('mousemove', (e) => {
+            const cursor = document.getElementById('mantis-cursor');
+            if (cursor) { cursor.style.left = e.clientX + 'px'; cursor.style.top = e.clientY + 'px'; }
+        });
 
         // Preload suoni menu nel pool per riproduzione immediata
         Object.values(CONFIG.menuSounds).forEach(s => {
