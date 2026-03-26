@@ -637,6 +637,7 @@ body {
 
 .btn-codec .btn-inner {
     display: flex;
+    flex: 1;
     align-items: center;
     justify-content: center;
     height: 100%;
