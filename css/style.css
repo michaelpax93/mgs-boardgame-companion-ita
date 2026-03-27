@@ -3699,26 +3699,23 @@ body, body * {
 }
 
 .die-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.15rem;
-    padding: 0.1rem 0.4rem;
+    display: inline-block;
+    width: 12px;
+    height: 12px;
     border-radius: 2px;
-    font-size: 0.75rem;
-    font-weight: 700;
     border: 1px solid;
+    vertical-align: middle;
+    flex-shrink: 0;
 }
 
 .die-white {
-    border-color: rgba(255, 255, 255, 0.45);
-    background: rgba(255, 255, 255, 0.1);
-    color: #fff;
+    background: #ffffff;
+    border-color: rgba(255, 255, 255, 0.7);
 }
 
 .die-black {
-    border-color: rgba(120, 120, 120, 0.4);
-    background: rgba(15, 15, 15, 0.85);
-    color: #888;
+    background: #1a1a1a;
+    border-color: rgba(160, 160, 160, 0.5);
 }
 
 .no-char-data {
@@ -4310,8 +4307,10 @@ body, body * {
     inset: 0;
     background: rgba(0, 0, 0, 0.92);
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
+    overflow-y: auto;
+    padding: 4vh 0;
     z-index: 500;
     animation: fadeIn 0.2s ease;
 }
@@ -4325,12 +4324,13 @@ body, body * {
     gap: 0.7rem;
     align-items: center;
     box-shadow: 0 0 40px rgba(58, 255, 126, 0.12);
-    min-width: 320px;
-    max-width: 520px;
     width: 92vw;
-    max-height: 90vh;
-    overflow-y: auto;
+    overflow: visible;
 }
+.eq-box-1 { max-width: 480px; }
+.eq-box-2 { max-width: 920px; }
+.eq-box-3 { max-width: 920px; }
+.eq-box-4 { max-width: 920px; }
 
 .equipment-popup-title {
     font-family: var(--font-mono);
@@ -4350,10 +4350,20 @@ body, body * {
 
 .equipment-popup-content {
     width: 100%;
-    display: flex;
-    flex-direction: column;
+    display: grid;
     gap: 1rem;
     margin: 0.4rem 0;
+}
+.eq-layout-1 { grid-template-columns: 1fr; }
+.eq-layout-2 { grid-template-columns: 1fr 1fr; }
+.eq-layout-3 { grid-template-columns: 1fr 1fr; }
+.eq-layout-4 { grid-template-columns: 1fr 1fr; }
+
+/* 3 giocatori: il terzo blocco occupa entrambe le colonne e si centra */
+.eq-layout-3 .eq-player-block:nth-child(3) {
+    grid-column: 1 / -1;
+    width: calc(50% - 0.5rem);
+    margin: 0 auto;
 }
 
 /* Blocco per singolo giocatore */
@@ -4590,6 +4600,8 @@ body, body * {
     flex: 0 0 auto;
     align-self: flex-start;
     min-width: 110px;
+    max-width: 170px;
+    overflow: hidden;
     border-left: 1px solid rgba(58, 255, 126, 0.15);
     padding-left: 0.5rem;
     display: flex;
@@ -4599,22 +4611,21 @@ body, body * {
 .eq-panel-row {
     display: flex;
     flex-direction: column;
-    flex: 1;
+    flex: 0 0 auto;
 }
 
 .eq-panel-items {
     display: flex;
     flex-direction: column;
-    flex: 1;
+    flex: 0 0 auto;
     gap: 0.3rem;
-    min-height: 0;
 }
 
 .eq-panel-item {
     display: flex;
     flex-direction: column;
-    flex: 1;
-    min-height: 0;
+    flex: 0 0 auto;
+    min-width: 0;
     gap: 0.25rem;
     border: 1px solid var(--border-green);
     padding: 0.4rem 0.5rem;
@@ -4664,4 +4675,107 @@ body, body * {
 
 .eq-action-btn {
     align-self: stretch;
+}
+
+/* ---- Equipment passive + manual charge sidebar ---- */
+.eq-passive-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    margin-top: 0.4rem;
+    padding-top: 0.4rem;
+    border-top: 1px solid rgba(0, 255, 0, 0.15);
+}
+
+.eq-passive-label {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+}
+
+.eq-passive-desc {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    line-height: 1.35;
+    word-break: break-word;
+    overflow-wrap: break-word;
+}
+
+.eq-charge-sidebar {
+    display: flex;
+    gap: 0.25rem;
+    margin-top: 0.3rem;
+}
+
+.eq-charge-sidebar-btn {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    background: rgba(0, 255, 0, 0.1);
+    border: 1px solid var(--codec-green);
+    color: var(--codec-green);
+    border-radius: 4px;
+    padding: 0.2rem 0.5rem;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.eq-charge-sidebar-btn:hover:not(:disabled) {
+    background: rgba(0, 255, 0, 0.25);
+}
+
+.eq-charge-sidebar-btn:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+
+.eq-inline-charge-btn {
+    margin-top: 0.2rem;
+    align-self: flex-start;
+    opacity: 0.25;
+    pointer-events: none;
+}
+
+.eq-inline-charge-btn.inline-charge-active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* ---- Volpe alle Strette select ---- */
+.volpe-select {
+    width: 100%;
+    background: #0a0a0a;
+    color: var(--codec-green);
+    border: 1px solid var(--border-green);
+    padding: 0.3rem 0.4rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+}
+
+/* ---- Ketchup badge (Stage 9) ---- */
+.ketchup-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    background: #cc2222;
+    color: #fff;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 700;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    margin-top: 0.3rem;
+    transition: background 0.15s;
+}
+
+.ketchup-badge:hover {
+    background: #e03333;
+}
+
+.ketchup-badge-disabled {
+    opacity: 0.3;
+    cursor: default;
 }

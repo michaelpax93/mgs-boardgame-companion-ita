@@ -145,8 +145,14 @@ const App = {
     // Stato consumo per stage: playerName → { equipId: bool }
     equipmentConsumedState: {},
     equipmentFlagState: {},   // playerName → { equipId → { flagName: bool } }
+    equipmentUsedThisTurn: {}, // playerName → Set<equipId> per azioni oncePerTurn
+    _inlineChargeActiveFor: {}, // playerName → equipId attivo per inline charge
+    _inlineChargeClicksLeft: {}, // playerName → click rimanenti (null = illimitati)
+    _volpePendingPlayer: null,
     bossSectionChargeState: {}, // sectionId → remaining charges
     eventClickedState: {},    // eventId → true (cliccato una volta)
+    _ketchupPendingEvent: null,
+    ketchupUsed: false,
 
     // Contatore azioni rumorose (noise:true) per giocatore nel turno corrente
     // Azzerato a inizio round. A fine turno del giocatore mostra popup promemoria dadi.
@@ -696,6 +702,13 @@ const App = {
         this._missilePendingPlayer = null;
         this._eventStoppedMusic = false;
         this.markerState = {};
+        this.ketchupState = {};
+        this.ketchupUsed = false;
+        this.liberateSnakePlayer = null;
+        this._inlineChargeActiveFor = {};
+        this._inlineChargeClicksLeft = {};
+        this._ketchupPendingPlayer = null;
+        this._ketchupPendingEvent = null;
         this.initEnemyState(stage);
         this.buildEventButtons(stage);
         this.buildMusicButtons(stage);
@@ -802,9 +815,10 @@ const App = {
             const clicked = !!this.eventClickedState[ev.id];
             const prefix = ev.file ? '▶ ' : '';
             const style = clicked ? ' style="opacity:0.35"' : '';
+            const label = ev.label || `EVENTO ${ev.id}`;
             return `<button class="btn-codec btn-video" id="btn-event-${ev.id}"
                 onclick="App.playEvent('${ev.id}')" ${clicked ? 'disabled' : ''}${style}>
-                <span class="btn-inner">${prefix}EVENTO ${ev.id}</span>
+                <span class="btn-inner">${prefix}${label}</span>
             </button>`;
         }).join('');
         this._updateEventButtonsForTurn();
@@ -814,6 +828,20 @@ const App = {
         if (!this.currentStage) return;
         const ev = (this.currentStage.events || []).find(e => e.id === id);
         if (!ev) return;
+        // Libera Snake: se il giocatore attivo ha il ketchup, mostra popup prima di risolvere
+        if (ev.liberate === 'snake') {
+            const player = this._activePlanciaPlayer() ?? this.stagePlayers?.[0];
+            if (player && this.ketchupState?.[player]) {
+                this._ketchupPendingPlayer = player;
+                this._ketchupPendingEvent = id;
+                document.getElementById('ketchup-popup').style.display = 'flex';
+                return;
+            }
+        }
+        // Traccia chi ha liberato Snake (per la scelta del video outro)
+        if (ev.liberate === 'snake') {
+            this.liberateSnakePlayer = this._activePlanciaPlayer() ?? this.stagePlayers?.[0];
+        }
         // Segna evento come cliccato e disabilita il bottone
         this.eventClickedState[id] = true;
         const btn = document.getElementById(`btn-event-${id}`);
@@ -827,6 +855,15 @@ const App = {
         // Applica variazioni nemici associate all'evento
         const changes = this.currentStage.enemyEvents?.[id];
         if (changes) changes.forEach(c => this.updateEnemyCount(c.zone, c.delta));
+        // Ketchup (solo stage 9)
+        if (ev.ketchup) {
+            const player = this._activePlanciaPlayer() ?? this.stagePlayers?.[0];
+            if (player) {
+                this.ketchupState[player] = true;
+                this.buildPlayerSidebar(this.currentStage);
+            }
+        }
+
         // Evento solo-suono (nessun video)
         if (!ev.file) {
             if (ev.sound) {
@@ -1174,7 +1211,7 @@ const App = {
         if (!stage) return;
         const required = (stage.events || []).filter(e => e.requiredForOutro);
         const allDone = required.every(e => !!this.eventClickedState[e.id]);
-        const hasOutro = stage.outro && stage.outro.length > 0;
+        const hasOutro = (stage.outro && stage.outro.length > 0) || stage.outroPart2 || required.length > 0;
         const enabled = hasOutro && allDone && !this.outroPlayed && !stage.isBoss;
         const btn = document.getElementById('btn-outro');
         if (btn) {
@@ -1190,19 +1227,51 @@ const App = {
         this._updateOutroBtn();
         this.setActiveVideoBtn(document.getElementById('btn-outro'));
         this._outroPlaying = this.newGameMode;
-        this.playVideo(this.currentStage.outro);
 
-        // Sblocca NEXT STAGE alla fine dell'outro (solo in newGameMode)
-        if (this.newGameMode) {
-            const player = document.getElementById('video-player');
-            if (player) {
-                this._outroEndedListener = () => {
-                    this._outroEndedListener = null;
-                    this._outroPlaying = false;
-                    this.unlockNextStage();
-                };
-                player.addEventListener('ended', this._outroEndedListener, { once: true });
+        const stage = this.currentStage;
+        // Stage con outro in due parti (es. stage 9: dipende da chi libera Snake)
+        if (stage.outroPart2) {
+            const part1ByPlayer = stage.outroPart1ByPlayer || {};
+            const key = this.ketchupUsed ? 'ketchup' : (this.liberateSnakePlayer || '');
+            const part1 = part1ByPlayer[key] || stage.outro || '';
+            const playPart2 = () => {
+                // playVideo setta _autoStopListener → stopVideo() → controlla _outroPlaying → unlockNextStage
+                this.playVideo(stage.outroPart2);
+            };
+            if (part1 && part1.length > 0) {
+                this.playVideo(part1);
+                // Rimpiazza _autoStopListener di playVideo con la catena verso part2
+                const player = document.getElementById('video-player');
+                if (player && this._autoStopListener) {
+                    player.removeEventListener('ended', this._autoStopListener);
+                    this._autoStopListener = () => { this._autoStopListener = null; playPart2(); };
+                    player.addEventListener('ended', this._autoStopListener, { once: true });
+                } else {
+                    playPart2();
+                }
+            } else {
+                playPart2();
             }
+            return;
+        }
+
+        if (stage.outro && stage.outro.length > 0) {
+            this.playVideo(stage.outro);
+            // Sblocca NEXT STAGE alla fine dell'outro (solo in newGameMode)
+            if (this.newGameMode) {
+                const player = document.getElementById('video-player');
+                if (player) {
+                    this._outroEndedListener = () => {
+                        this._outroEndedListener = null;
+                        this._outroPlaying = false;
+                        this.unlockNextStage();
+                    };
+                    player.addEventListener('ended', this._outroEndedListener, { once: true });
+                }
+            }
+        } else if (this.newGameMode) {
+            this._outroPlaying = false;
+            this.unlockNextStage();
         }
     },
 
@@ -1229,8 +1298,11 @@ const App = {
         if (!this.currentStage) return;
         const nextStage = STAGES.find(s => s.id === this.currentStage.id + 1);
         if (!nextStage) return;
-        if (this.currentStage.rewards) {
-            this._showRewardsPopup(this.currentStage, nextStage);
+        const effectiveRewards = (this.ketchupUsed && this.currentStage.rewardsKetchup)
+            ? this.currentStage.rewardsKetchup
+            : this.currentStage.rewards;
+        if (effectiveRewards) {
+            this._showRewardsPopup({ ...this.currentStage, rewards: effectiveRewards }, nextStage);
         } else {
             this.showPlayersPopup(nextStage);
         }
@@ -1505,10 +1577,6 @@ const App = {
     _inlineSaveVideoPath(prefix) {
         const id = this._inlineSaveNextStage?.id ?? this.currentStage?.id;
         if (!id || id < 2) return null;
-        if (id > 9) {
-            if (prefix === 'pre-save') return 'video/mei ling/pre-save-04.mp4';
-            return 'video/mei ling/no-save-04.mp4'; // save e no-save entrambi
-        }
         return `video/mei ling/${prefix}-${String(id).padStart(2, '0')}.mp4`;
     },
 
@@ -1972,10 +2040,13 @@ const App = {
                 else                      this.equipmentConsumedState[p][id] = null;
             });
         });
-        // Inizializza charges sezioni boss
+        // Inizializza charges sezioni boss — per giocatore
         this.bossSectionChargeState = {};
-        (this.currentStage?.bossTurnSections || []).forEach(sec => {
-            if (sec.id && sec.charges != null) this.bossSectionChargeState[sec.id] = sec.charges;
+        this.stagePlayers.forEach(p => {
+            this.bossSectionChargeState[p] = {};
+            (this.currentStage?.bossTurnSections || []).forEach(sec => {
+                if (sec.id && sec.charges != null) this.bossSectionChargeState[p][sec.id] = sec.charges;
+            });
         });
         this._renderTurnSection();
     },
@@ -2017,8 +2088,11 @@ const App = {
         const el = document.getElementById('token-dots');
         if (el) el.innerHTML = this._buildTokenHtml();
         this._updatePlanciaButtonStates(playerName);
-        this._refreshEquipmentPanel(playerName);
-        this._refreshPlayerBossSections();
+        // Azione plancia: deattiva inline charge mode
+        if (actionId && playerName && this._inlineChargeActiveFor[playerName]) {
+            this._inlineChargeActiveFor[playerName] = null;
+            this._inlineChargeClicksLeft[playerName] = null;
+        }
         // Aggiorna stato scatolone: le azioni della plancia escono dallo scatolone
         // tranne Movimento Furtivo, Scatto e Concentrazione
         const BOX_SAFE = ['movimento-furtivo', 'scatto', 'concentrazione'];
@@ -2026,6 +2100,8 @@ const App = {
             this.boxState[playerName] = false;
             this._renderSoldierPhases();
         }
+        this._refreshEquipmentPanel(playerName);
+        this._refreshPlayerBossSections();
     },
 
     // Ricalcola disabled su tutti i bottoni della plancia
@@ -2050,7 +2126,7 @@ const App = {
 
             let disabled = stageDisabled.has(a.id);
             if (!disabled && a._bossSectionId !== undefined) {
-                const remaining = this.bossSectionChargeState[a._bossSectionId] ?? a._bossSectionCharges;
+                const remaining = this.bossSectionChargeState[playerName]?.[a._bossSectionId] ?? a._bossSectionCharges;
                 disabled = (a.usesCharge && remaining <= 0) || (typeof a.cost === 'number' && a.cost > available);
             } else if (!disabled && inConcMode) {
                 disabled = a.id !== 'concentrazione';
@@ -2139,7 +2215,7 @@ const App = {
         if (!dice || !dice.length) return '';
         const chips = dice.flatMap(d => {
             const cls = d.color === 'white' ? 'die-white' : 'die-black';
-            return Array.from({ length: d.count }, () => `<span class="die-chip ${cls}">🎲</span>`);
+            return Array.from({ length: d.count }, () => `<span class="die-chip ${cls}"></span>`);
         }).join('');
         return `<div class="action-dice">${chips}</div>`;
     },
@@ -2165,8 +2241,9 @@ const App = {
             if (eq.charges != null) {
                 const remaining = typeof consumed[id] === 'number' ? consumed[id] : eq.charges;
                 isExhausted = remaining <= 0;
+                const totalDots = Math.max(eq.charges, remaining);
                 chargesHtml = `<div class="eq-panel-charges">${
-                    Array.from({ length: eq.charges }, (_, i) =>
+                    Array.from({ length: totalDots }, (_, i) =>
                         `<span class="eq-charge-dot ${i < remaining ? 'full' : 'empty'}"></span>`
                     ).join('')
                 }</div>`;
@@ -2184,6 +2261,7 @@ const App = {
                 : false;
 
             const BOX_IDS = ['010', '027'];
+            const usedThisTurn = this.equipmentUsedThisTurn[playerName] || new Set();
             const disabledList = actionList.map(a => {
                 const chargeNeeded   = a.usesCharge && eq.charges != null;
                 const remaining      = typeof consumed[id] === 'number' ? consumed[id] : (eq.charges ?? 0);
@@ -2193,7 +2271,9 @@ const App = {
                     ? !(this.equipmentFlagState[playerName]?.[id]?.[a.requiresFlag])
                     : false;
                 const alreadyInBox   = BOX_IDS.includes(id) && !!this.boxState[playerName];
-                return (eq.consumable && isExhausted) || (a.usesCharge && isExhausted) || noCharge || noTokens || flagBlocked || zoneBlocked || alreadyInBox;
+                const notExhausted   = a.requiresExhausted && remaining > 0;
+                const onceDone       = a.oncePerTurn && usedThisTurn.has(id);
+                return (eq.consumable && isExhausted) || (a.usesCharge && isExhausted) || noCharge || noTokens || flagBlocked || zoneBlocked || alreadyInBox || notExhausted || onceDone;
             });
             const allDisabled = disabledList.every(Boolean);
             const btnsHtml = actionList.map((a, ai) => {
@@ -2210,10 +2290,24 @@ const App = {
                 </button>${diceHtml}`;
             }).join('');
 
+            const inlineChargeRemaining = typeof consumed[id] === 'number' ? consumed[id] : (eq.charges ?? 0);
+            const inlineChargeActive = this._inlineChargeActiveFor[playerName] === id;
+            const inlineChargeHtml = eq.inlineCharge
+                ? `<button class="panel-btn eq-inline-charge-btn${inlineChargeActive ? ' inline-charge-active' : ''}"
+                       ${!inlineChargeActive || inlineChargeRemaining <= 0 ? 'disabled' : ''}
+                       onclick="App.spendEquipCharge('${playerName}','${id}')">
+                       −1 ⚙
+                   </button>`
+                : '';
+            const passiveHtml = eq.passive
+                ? `<div class="eq-passive-row"><span class="eq-passive-label">PASSIVA</span><span class="eq-passive-desc">${eq.passive.desc}</span></div>`
+                : '';
+
             return `<div class="eq-panel-item${allDisabled ? ' eq-item-disabled' : ''}" id="eq-item-${playerName}-${id}">
                 <div class="eq-panel-item-name">${eq.name}</div>
                 ${chargesHtml}
-                ${btnsHtml}
+                ${btnsHtml}${inlineChargeHtml}
+                ${passiveHtml}
             </div>`;
         }).join('');
 
@@ -2223,6 +2317,50 @@ const App = {
             <div class="turn-panel-col-header">EQUIPAGGIAMENTO</div>
             <div class="eq-panel-items">${items}</div>
         </div>`;
+    },
+
+    _buildManualChargeHtml(playerName) {
+        const slots = this.playerEquipment[playerName] || [];
+        const consumed = this.equipmentConsumedState[playerName] || {};
+        const btns = slots
+            .filter(id => id && EQUIPMENT[id]?.manualCharge)
+            .map(id => {
+                const eq = EQUIPMENT[id];
+                const remaining = typeof consumed[id] === 'number' ? consumed[id] : (eq.charges ?? 0);
+                return `<button class="eq-charge-sidebar-btn" ${remaining <= 0 ? 'disabled' : ''}
+                    onclick="App.spendEquipCharge('${playerName}','${id}')">
+                    ⚙ ${remaining}
+                </button>`;
+            }).join('');
+        return btns ? `<div class="eq-charge-sidebar" id="eq-charge-sidebar-${playerName}">${btns}</div>` : '';
+    },
+
+    spendEquipCharge(playerName, equipId) {
+        const eq = EQUIPMENT[equipId];
+        if (!eq?.manualCharge && !eq?.inlineCharge) return;
+        // Per inline charge: consentito solo se è il modo attivo
+        if (eq.inlineCharge && !eq.manualCharge && this._inlineChargeActiveFor[playerName] !== equipId) return;
+        const consumed = this.equipmentConsumedState[playerName] || {};
+        const remaining = typeof consumed[equipId] === 'number' ? consumed[equipId] : (eq.charges ?? 0);
+        if (remaining <= 0) return;
+        consumed[equipId] = remaining - 1;
+        this.equipmentConsumedState[playerName] = consumed;
+        // Decrementa click rimanenti (per inlineChargeOnce)
+        if (eq.inlineCharge && this._inlineChargeActiveFor[playerName] === equipId) {
+            const left = this._inlineChargeClicksLeft[playerName];
+            if (left !== null) {
+                const newLeft = left - 1;
+                this._inlineChargeClicksLeft[playerName] = newLeft;
+                if (newLeft <= 0) {
+                    this._inlineChargeActiveFor[playerName] = null;
+                    this._inlineChargeClicksLeft[playerName] = null;
+                }
+            }
+        }
+        this._refreshEquipmentPanel(playerName);
+        // Aggiorna il bottone nella sidebar
+        const sidebarSection = document.getElementById(`eq-charge-sidebar-${playerName}`);
+        if (sidebarSection) sidebarSection.outerHTML = this._buildManualChargeHtml(playerName);
     },
 
     useEquipment(playerName, equipId, actionIndex = 0) {
@@ -2289,7 +2427,10 @@ const App = {
         const consumed = this.equipmentConsumedState[playerName] || {};
         // Per i missili: consuma carica solo al lancio (quando non c'è già un missile attivo)
         const missileAlreadyActive = a.category === 'missile' && !!this.missileState[playerName];
-        if (a.usesCharge && eq.charges != null && !missileAlreadyActive) {
+        if (a.grantsCharge != null && eq.charges != null) {
+            const current = typeof consumed[equipId] === 'number' ? consumed[equipId] : 0;
+            consumed[equipId] = Math.min(eq.charges, current + a.grantsCharge);
+        } else if (a.usesCharge && eq.charges != null && !missileAlreadyActive) {
             const current = typeof consumed[equipId] === 'number' ? consumed[equipId] : eq.charges;
             consumed[equipId] = Math.max(0, current - 1);
         } else if (eq.consumable) {
@@ -2325,6 +2466,14 @@ const App = {
             const zone = this.playerZoneState[playerName] ?? 0;
             if ((this.enemyState[zone] ?? 0) > 0) {
                 this.triggerAlert();
+                if (this.markerState[playerName]) {
+                    this.markerState[playerName].alert = true;
+                    this.markerState[playerName].inter = false;
+                    ['alert', 'inter'].forEach(m => {
+                        const btn = document.getElementById(`marker-${m}-${playerName}`);
+                        if (btn) btn.classList.toggle('active', !!this.markerState[playerName][m]);
+                    });
+                }
             }
         }
 
@@ -2339,6 +2488,21 @@ const App = {
         const wasInBox = !!this.boxState[playerName];
         this.boxState[playerName] = BOX_IDS.includes(equipId);
         if (wasInBox !== !!this.boxState[playerName]) this._renderSoldierPhases();
+
+        // Attiva/deattiva inline charge mode
+        if (eq.inlineCharge) {
+            this._inlineChargeActiveFor[playerName] = equipId;
+            this._inlineChargeClicksLeft[playerName] = a.inlineChargeOnce ? 1 : null;
+        } else if (this._inlineChargeActiveFor[playerName]) {
+            this._inlineChargeActiveFor[playerName] = null;
+            this._inlineChargeClicksLeft[playerName] = null;
+        }
+
+        // Segna azione oncePerTurn come usata per questo turno
+        if (a.oncePerTurn) {
+            if (!this.equipmentUsedThisTurn[playerName]) this.equipmentUsedThisTurn[playerName] = new Set();
+            this.equipmentUsedThisTurn[playerName].add(equipId);
+        }
 
         this._refreshEquipmentPanel(playerName);
     },
@@ -2498,7 +2662,11 @@ const App = {
                 ${noConc ? 'disabled' : ''}
                 onclick="App.toggleConcentration('${playerName}',${i});event.stopPropagation()">
                 ${imgHtml}
-                <span class="conc-token-label">${t.dice ? t.label.replace('[dice]', t.dice.flatMap(d => Array.from({length: d.count}, () => `<span class="die-chip ${d.color === 'white' ? 'die-white' : 'die-black'}">🎲</span>`)).join('')) : t.label}</span>
+                <span class="conc-token-label">${t.label
+                    .replace(/\[dice\]/g, '<span class="die-chip die-white"></span>')
+                    .replace(/\[dado bianco\]/g, '<span class="die-chip die-white"></span>')
+                    .replace(/\[dado nero\]/g, '<span class="die-chip die-black"></span>')
+                }</span>
                 <span class="conc-token-cost">${t.cost}<span class="cost-token">●</span></span>
             </button>`;
         }).join('');
@@ -2554,7 +2722,7 @@ const App = {
                     const diceHtml = t.dice
                         ? t.label.replace('[dice]', t.dice.flatMap(d =>
                             Array.from({length: d.count}, () =>
-                                `<span class="die-chip ${d.color === 'white' ? 'die-white' : 'die-black'}">🎲</span>`
+                                `<span class="die-chip ${d.color === 'white' ? 'die-white' : 'die-black'}"></span>`
                             )).join(''))
                         : t.label;
                     const tPayload = { ...t, isConcToken: true };
@@ -2581,6 +2749,138 @@ const App = {
                 ${tokensHtml}
             </div>
         </div>`;
+    },
+
+    // Mostra nel pannello del giocatore attivo le abilità "otherTurn" degli altri personaggi (esclusa Meryl)
+    _sharedConcOpen: {},
+
+    _buildOtherSharedAbilitiesHtml(activePlayer) {
+        let html = '';
+        for (const pName of this.stagePlayers) {
+            if (pName === activePlayer || pName === 'Meryl') continue;
+            const ch = CHARACTERS[pName];
+            if (!ch?.abilities) continue;
+            const shared = ch.abilities.filter(a => a.otherTurn);
+            if (!shared.length) continue;
+            const usedMap = this.abilityUsedState[pName] || {};
+            const btns = shared.map(a => {
+                const isUsed = !!usedMap[a.id];
+                const cls   = isUsed ? 'used' : 'available';
+                const label = isUsed ? 'usata' : '1×/round';
+                const payload = { ...a, isAbility: true };
+                const isOpen = a.showsConcTokens && !!this._sharedConcOpen[pName];
+                const onclick = a.showsConcTokens
+                    ? `App.toggleSharedConcSelection('${pName}')`
+                    : `App.toggleAbility('${pName}','${a.id}')`;
+                return `<button class="panel-btn panel-ability ${cls}${isOpen ? ' active' : ''}"
+                    id="ability-btn-shared-${pName}-${a.id}"
+                    onmouseenter="App.showTooltip(event,'${this._enc(payload)}')"
+                    onmouseleave="App.hideActionTooltip()"
+                    onclick="${onclick}">
+                    <span class="panel-btn-name">${a.name}</span>
+                    <span class="panel-btn-cost panel-ability-tag">${label}</span>
+                </button>`;
+            }).join('');
+
+            // Token concentrazione espandibili per abilità con showsConcTokens
+            let tokensHtml = '';
+            const concAbility = shared.find(a => a.showsConcTokens);
+            if (concAbility && this._sharedConcOpen[pName]) {
+                const tokens = this.concentrationState[pName] || [];
+                const concTokens = ch.concentrationTokens || [];
+                tokensHtml = `<div class="meryl-conc-selection">` +
+                    concTokens.map((t, i) => {
+                        const avail = tokens[i] !== false;
+                        if (!avail) return '';
+                        const diceHtml = t.dice
+                            ? t.label.replace(/\[.*?\]/, t.dice.flatMap(d =>
+                                Array.from({length: d.count}, () =>
+                                    `<span class="die-chip ${d.color === 'white' ? 'die-white' : 'die-black'}"></span>`
+                                )).join(''))
+                            : t.label;
+                        const tPayload = { ...t, isConcToken: true };
+                        return `<button class="panel-conc-token available"
+                            onmouseenter="App.showTooltip(event,'${this._enc(tPayload)}')"
+                            onmouseleave="App.hideActionTooltip()"
+                            onclick="App.useSharedConcToken('${pName}',${i})">
+                            <span class="conc-token-label">${diceHtml}</span>
+                            <span class="conc-token-cost">${t.cost}●</span>
+                        </button>`;
+                    }).join('') +
+                    `</div>`;
+            }
+
+            html += `<div class="meryl-shared-ability-row" id="shared-ability-row-${pName}">
+                <span class="meryl-shared-label">${pName.toUpperCase()}</span>
+                <div class="meryl-shared-ability-col">${btns}${tokensHtml}</div>
+            </div>`;
+        }
+        return html;
+    },
+
+    confirmKetchup() {
+        document.getElementById('ketchup-popup').style.display = 'none';
+        const player = this._ketchupPendingPlayer;
+        const pendingEvent = this._ketchupPendingEvent;
+        this._ketchupPendingPlayer = null;
+        this._ketchupPendingEvent = null;
+        if (player) {
+            this.ketchupState[player] = false;
+            this.ketchupUsed = true;
+            const sfx = new Audio('audio/sfx/ketchup.wav');
+            sfx.volume = 0.85;
+            sfx.addEventListener('ended', () => {
+                if (pendingEvent) this.playEvent(pendingEvent);
+            }, { once: true });
+            sfx.play().catch(() => {
+                if (pendingEvent) this.playEvent(pendingEvent);
+            });
+            this.buildPlayerSidebar(this.currentStage);
+        } else {
+            if (pendingEvent) this.playEvent(pendingEvent);
+        }
+    },
+
+    cancelKetchup() {
+        document.getElementById('ketchup-popup').style.display = 'none';
+        const pendingEvent = this._ketchupPendingEvent;
+        this._ketchupPendingPlayer = null;
+        this._ketchupPendingEvent = null;
+        if (pendingEvent) this.playEvent(pendingEvent);
+    },
+
+    toggleSharedConcSelection(playerName) {
+        this._sharedConcOpen[playerName] = !this._sharedConcOpen[playerName];
+        this._refreshSharedAbilityRow(playerName);
+    },
+
+    _refreshSharedAbilityRow(playerName) {
+        const row = document.getElementById(`shared-ability-row-${playerName}`);
+        if (!row) return;
+        const activePlayer = this.stagePlayers[this.currentPlayerIndex];
+        const tmp = document.createElement('div');
+        tmp.innerHTML = this._buildOtherSharedAbilitiesHtml(activePlayer);
+        const target = tmp.querySelector(`#shared-ability-row-${playerName}`);
+        if (target) row.outerHTML = target.outerHTML;
+    },
+
+    useSharedConcToken(playerName, index) {
+        if (!this.concentrationState[playerName]) return;
+        const ch = CHARACTERS[playerName];
+        const token = ch?.concentrationTokens?.[index];
+        this.concentrationState[playerName][index] = false;
+        this._sharedConcOpen[playerName] = false;
+        if (token?.grantsAction) {
+            const spentIdx = this.playerTokenState.indexOf(false);
+            if (spentIdx !== -1) this.playerTokenState[spentIdx] = true;
+            else this.playerTokenState.push(true);
+            const dots = document.getElementById('token-dots');
+            if (dots) dots.innerHTML = this._buildTokenHtml();
+        }
+        const activePlayer = this.stagePlayers[this.currentPlayerIndex];
+        this._refreshSharedAbilityRow(playerName);
+        this._updatePlanciaButtonStates(activePlayer);
+        this._refreshEquipmentPanel(activePlayer);
     },
 
     toggleMerylConcSelection() {
@@ -2737,8 +3037,12 @@ const App = {
         if (!this.abilityUsedState[playerName]) return;
         const wasUsed = this.abilityUsedState[playerName][abilityId];
         this.abilityUsedState[playerName][abilityId] = !wasUsed;
-        const btn = document.getElementById(`ability-btn-${playerName}-${abilityId}`);
-        if (btn) {
+        for (const id of [
+            `ability-btn-${playerName}-${abilityId}`,
+            `ability-btn-shared-${playerName}-${abilityId}`,
+        ]) {
+            const btn = document.getElementById(id);
+            if (!btn) continue;
             btn.classList.toggle('used',      !wasUsed);
             btn.classList.toggle('available',  wasUsed);
             const tag = btn.querySelector('.panel-ability-tag');
@@ -2903,7 +3207,7 @@ const App = {
                     isDisabled = isDisabled || !this._weaponAttackUsedByPlayer[playerName];
                 }
             } else if (a._bossSectionId !== undefined) {
-                const remaining = this.bossSectionChargeState[a._bossSectionId] ?? a._bossSectionCharges;
+                const remaining = this.bossSectionChargeState[playerName]?.[a._bossSectionId] ?? a._bossSectionCharges;
                 isDisabled = (a.usesCharge && remaining <= 0) || (typeof a.cost === 'number' && a.cost > available);
             } else if (typeof a.cost === 'number') {
                 isDisabled = a.cost > available;
@@ -2924,7 +3228,7 @@ const App = {
                 const enc2 = this._enc(a);
                 let chargesDotsHtml = '';
                 if (a.usesCharge && a._bossSectionCharges != null) {
-                    const remaining = this.bossSectionChargeState[a._bossSectionId] ?? a._bossSectionCharges;
+                    const remaining = this.bossSectionChargeState[playerName]?.[a._bossSectionId] ?? a._bossSectionCharges;
                     chargesDotsHtml = `<span class="hotspot-charges">${
                         Array.from({ length: a._bossSectionCharges }, (_, i) =>
                             `<span class="eq-charge-dot ${i < remaining ? 'full' : 'empty'}"></span>`
@@ -3099,7 +3403,7 @@ const App = {
             const eqHtml = this._buildEquipmentPanel(activePlayer);
 
             const hasBossSectionsInPlancia = !!(stage?.bossTurnSections?.length && stage?.variableActions);
-            const bossSectionsHtml = hasBossSectionsInPlancia ? '' : this._buildPlayerBossSectionsHtml(stage);
+            const bossSectionsHtml = hasBossSectionsInPlancia ? '' : this._buildPlayerBossSectionsHtml(stage, activePlayer);
 
             if (planciaHtml) {
                 // Layout con bottoni cerchio + segnalini concentrazione separati
@@ -3117,6 +3421,8 @@ const App = {
                 this._updatePlanciaButtonStates(activePlayer);
                 const merylSharedHtml = this._buildMerylSharedAbilityHtml(activePlayer);
                 if (merylSharedHtml) content.innerHTML += merylSharedHtml;
+                const otherSharedHtml = this._buildOtherSharedAbilitiesHtml(activePlayer);
+                if (otherSharedHtml) content.innerHTML += otherSharedHtml;
             } else {
                 // Layout a colonne (personaggi senza plancia)
                 const merylSharedHtml = this._buildMerylSharedAbilityHtml(activePlayer);
@@ -3142,7 +3448,8 @@ const App = {
                     ${eqColHtml}
                 </div>
                 ${bossSectionsHtml}
-                ${merylSharedHtml}`;
+                ${merylSharedHtml}
+                ${this._buildOtherSharedAbilitiesHtml(activePlayer)}`;
             }
             this._clearEquipmentSidebar();
         } else {
@@ -3202,6 +3509,9 @@ const App = {
         if (!this.selectedPlayerForTurn || this.playersDoneTurn.includes(this.selectedPlayerForTurn)) return;
         this.playerSubPhase = 'active';
         this.playerTokenState = [true, true, true, true];
+        delete this.equipmentUsedThisTurn[this.selectedPlayerForTurn];
+        delete this._inlineChargeActiveFor[this.selectedPlayerForTurn];
+        delete this._inlineChargeClicksLeft[this.selectedPlayerForTurn];
         this._renderTurnSection();
     },
 
@@ -3323,6 +3633,9 @@ const App = {
         this._anyAttackUsedByPlayer = {};
         this._weaponAttackUsedByPlayer = {};
         this._noiseCountThisTurn = {};
+        this.equipmentUsedThisTurn = {};
+        this._inlineChargeActiveFor = {};
+        this._inlineChargeClicksLeft = {};
         this._renderTurnSection();
     },
 
@@ -3565,6 +3878,8 @@ const App = {
                 </button>
             </div>` : ''}
             ${zoneHtml}
+            ${this._buildManualChargeHtml(playerName)}
+            ${this.ketchupState?.[playerName] ? `<button class="ketchup-badge ketchup-badge-disabled" disabled>A</button>` : ''}
         </div>`;
     },
 
@@ -3688,13 +4003,14 @@ const App = {
         document.getElementById('mantis-defense-popup').style.display = 'none';
     },
 
-    _buildPlayerBossSectionsHtml(stage) {
+    _buildPlayerBossSectionsHtml(stage, playerName) {
         const sections = stage?.bossTurnSections || [];
         if (!sections.length) return '';
+        const pName = playerName ?? this._activePlanciaPlayer();
         const available = this.playerTokenState.filter(t => t).length;
         const items = sections.map(sec => {
             const remaining = sec.id != null && sec.charges != null
-                ? (this.bossSectionChargeState[sec.id] ?? sec.charges)
+                ? (this.bossSectionChargeState[pName]?.[sec.id] ?? sec.charges)
                 : null;
             const chargesHtml = remaining != null
                 ? `<div class="eq-panel-charges">${
@@ -3711,7 +4027,7 @@ const App = {
                     ${disabled ? 'disabled' : ''}
                     onmouseenter="App.showTooltip(event,'${this._enc(a)}')"
                     onmouseleave="App.hideActionTooltip()"
-                    onclick="App.useBossSectionAction('${sec.id}',${ai})">
+                    onclick="App.useBossSectionAction('${sec.id}',${ai},'${pName}')">
                     <span class="panel-btn-name">${a.name}</span>
                     <span class="panel-btn-cost">${a.cost != null ? a.cost : ''}${a.cost != null ? '<span class="cost-token">●</span>' : ''}</span>
                 </button>${diceHtml}`;
@@ -3789,21 +4105,24 @@ const App = {
         return enemiesHtml;
     },
 
-    useBossSectionAction(sectionId, actionIndex) {
+    useBossSectionAction(sectionId, actionIndex, playerName) {
         const stage = this.currentStage;
         const sec   = stage?.bossTurnSections?.find(s => s.id === sectionId);
         if (!sec) return;
         const a = sec.actions[actionIndex];
         if (!a) return;
+        const pName = playerName ?? this._activePlanciaPlayer();
         if (a.sound) this.playSfx(a.sound);
         let needsRender = false;
         if (a.usesCharge && sec.charges != null) {
-            const cur = this.bossSectionChargeState[sectionId] ?? sec.charges;
-            this.bossSectionChargeState[sectionId] = Math.max(0, cur - 1);
+            if (!this.bossSectionChargeState[pName]) this.bossSectionChargeState[pName] = {};
+            const cur = this.bossSectionChargeState[pName][sectionId] ?? sec.charges;
+            this.bossSectionChargeState[pName][sectionId] = Math.max(0, cur - 1);
             needsRender = true;
         }
         if (a.restoresCharges && sec.charges != null) {
-            this.bossSectionChargeState[sectionId] = sec.charges;
+            if (!this.bossSectionChargeState[pName]) this.bossSectionChargeState[pName] = {};
+            this.bossSectionChargeState[pName][sectionId] = sec.charges;
             needsRender = true;
         }
         if (needsRender) this._renderTurnSection();
@@ -4208,6 +4527,56 @@ const App = {
         }
 
         if (current === 0 && prev > 0) this._onPlayerDeath(playerName);
+
+        // Volpe alle Strette: ogni volta che Gray Fox subisce danni
+        if (delta < 0 && current > 0 && playerName === 'Gray Fox') {
+            const ch = CHARACTERS[playerName];
+            const hasAbility = ch?.abilities?.some(a => a.id === 'volpe-alle-strette');
+            if (hasAbility) this._showVolpePopup(playerName);
+        }
+    },
+
+    _showVolpePopup(playerName) {
+        const consumed = this.equipmentConsumedState[playerName] || {};
+        const gearEquip = (this.playerEquipment[playerName] || []).filter(id => {
+            if (!id) return false;
+            const eq = EQUIPMENT[id];
+            return eq?.isGear === true;
+        });
+        if (!gearEquip.length) return;
+        this._volpePendingPlayer = playerName;
+        const sel = document.getElementById('volpe-popup-select');
+        if (sel) {
+            sel.innerHTML = gearEquip.map(id => {
+                const eq = EQUIPMENT[id];
+                const current = typeof consumed[id] === 'number' ? consumed[id] : (eq.charges ?? 0);
+                return `<option value="${id}">${eq.name} (⚙ ${current})</option>`;
+            }).join('');
+        }
+        document.getElementById('volpe-popup').style.display = 'flex';
+    },
+
+    volpeAlleStretteConfirm() {
+        document.getElementById('volpe-popup').style.display = 'none';
+        const playerName = this._volpePendingPlayer;
+        this._volpePendingPlayer = null;
+        const sel = document.getElementById('volpe-popup-select');
+        const equipId = sel?.value;
+        if (!playerName || !equipId) return;
+        const eq = EQUIPMENT[equipId];
+        if (!eq) return;
+        const consumed = this.equipmentConsumedState[playerName] || {};
+        const current = typeof consumed[equipId] === 'number' ? consumed[equipId] : (eq.charges ?? 0);
+        consumed[equipId] = current + 1; // nessun cap: può superare il massimo
+        this.equipmentConsumedState[playerName] = consumed;
+        this._refreshEquipmentPanel(playerName);
+        const sidebarSection = document.getElementById(`eq-charge-sidebar-${playerName}`);
+        if (sidebarSection) sidebarSection.outerHTML = this._buildManualChargeHtml(playerName);
+    },
+
+    volpeAlleStretteSalta() {
+        document.getElementById('volpe-popup').style.display = 'none';
+        this._volpePendingPlayer = null;
     },
 
     _onPlayerDeath(playerName) {
@@ -4371,7 +4740,7 @@ const App = {
             if (enemyId === 'ocelot') this._ocelotZeroStreak = 0;
             const enemy = this.currentStage?.bossEnemies?.find(e => e.id === enemyId);
             const hs = enemy?.hitSequence;
-            if (hs && action?.attackType === 'physical') {
+            if (hs && action?.attackType === 'physical' && !action?.noHitSound) {
                 // Sequenza rapida colpo+ferita (stile CQC) — suoni gestiti qui, HP aggiornato silenziosamente
                 const prevHp = this.bossHpState?.[enemyId] ?? 0;
                 const maxHp  = this.bossMaxHpState?.[enemyId] ?? 0;
@@ -4425,7 +4794,7 @@ const App = {
                     }, pairT + WOUND_OFFSET);
                 }
             } else {
-                if (action?.attackType === 'physical') {
+                if (action?.attackType === 'physical' && !action?.noHitSound) {
                     const colpo = new Audio('audio/sfx/colpo-fisico.wav');
                     colpo.volume = 0.85;
                     colpo.play().catch(() => {});
@@ -4504,7 +4873,7 @@ const App = {
         const sounds   = isSneaking ? this.ATTACK_SOUNDS.guard : {};
         const vol      = 0.85;
 
-        if (action?.attackType === 'physical') {
+        if (action?.attackType === 'physical' && !action?.noHitSound) {
             // colpo fisico → +100ms → soldato-colpito
             const sfx1 = new Audio('audio/sfx/colpo-fisico.wav');
             sfx1.volume = vol;
@@ -4531,7 +4900,7 @@ const App = {
         const sounds     = isSneaking ? this.ATTACK_SOUNDS.guard : {};
         const vol        = 0.85;
 
-        const hitSoundFile = action?.attackType === 'physical' ? 'audio/sfx/colpo-fisico.wav' : null;
+        const hitSoundFile = (action?.attackType === 'physical' && !action?.noHitSound) ? 'audio/sfx/colpo-fisico.wav' : null;
 
         if (hitSoundFile && isSneaking) {
             // colpo → +100ms → soldato-colpito → +300ms → colpo → +100ms → soldato-ucciso → caduta → tonfo
@@ -4587,7 +4956,6 @@ const App = {
 
     _getDefaultEnemies(stage) {
         if (!stage || !stage.enemies) return [];
-        if (stage.defaultEnemies) return stage.defaultEnemies;
         return stage.enemies.map(() => 3);
     },
 
@@ -4735,6 +5103,11 @@ const App = {
                 if (btn) btn.classList.toggle('active', !!this.markerState[playerName][m]);
             });
         }
+        // Scoperto: esce dallo scatolone
+        if (this.boxState[playerName]) {
+            this.boxState[playerName] = false;
+            this._refreshEquipmentPanel(playerName);
+        }
         // Per la telecamera triggerAlert è già schedulato dopo la fine dell'audio !!!
         if (!isCamera) this.triggerAlert();
         if (this.turnPhase === 'soldiers') this._renderSoldierPhases();
@@ -4793,7 +5166,9 @@ const App = {
         const players = (stage.players && stage.players.length > 0) ? stage.players : ['Snake'];
         this._pendingStageId = stage.id;
         this._popupAllPlayers = players;
-        this._pendingSelectedPlayers = players.includes('Snake') ? ['Snake'] : [];
+        this._popupMandatoryPlayers = stage.mandatoryPlayers || [];
+        const autoSelected = players.filter(p => p === 'Snake' || this._popupMandatoryPlayers.includes(p));
+        this._pendingSelectedPlayers = autoSelected.length ? autoSelected : [];
 
         // Con un solo personaggio disponibile salta il popup e vai diretto all'equipaggiamento
         if (players.length === 1) {
@@ -4812,7 +5187,7 @@ const App = {
             players.map(p => {
                 const color    = this.PLAYER_COLORS[p] || 'var(--codec-green)';
                 const isSel    = selected.includes(p);
-                const required = p === 'Snake';
+                const required = p === 'Snake' || (this._popupMandatoryPlayers || []).includes(p);
                 return `<div class="player-chip${isSel ? ' selected' : ''}${required ? ' required' : ''}"
                     style="border-color:${color};color:${color}"
                     onclick="App._togglePopupPlayer('${p}')">◆ ${p}${required ? ' ✦' : ''}</div>`;
@@ -4822,7 +5197,7 @@ const App = {
     },
 
     _togglePopupPlayer(name) {
-        if (name === 'Snake') return; // Snake è sempre obbligatorio
+        if (name === 'Snake' || (this._popupMandatoryPlayers || []).includes(name)) return;
         const sel = this._pendingSelectedPlayers;
         const idx = sel.indexOf(name);
         if (idx === -1) sel.push(name);
@@ -4884,12 +5259,14 @@ const App = {
         const isExtreme = this.session?.difficulty === 'EXTREME';
         const maxSlots  = isExtreme ? 2 : 3;
         const content   = document.getElementById('equipment-popup-content');
+        const n = players.length;
+        content.className = `equipment-popup-content eq-layout-${n}`;
+        const box = content.closest('.equipment-popup-box');
+        if (box) box.className = `equipment-popup-box eq-box-${n}`;
 
         content.innerHTML = players.map(p => {
             const color   = this.PLAYER_COLORS[p] || 'var(--codec-green)';
             const slots   = (this.playerEquipment[p] || [null, null, null]).slice(0, maxSlots);
-            const ownerItemsForPlayer = Object.keys(EQUIPMENT).filter(id => EQUIPMENT[id].owner === p && !unlocked.includes(id));
-            const isDebut = ownerItemsForPlayer.length > 0;
 
             const slotsHtml = slots.map((slotId, i) => {
                 const isInactive = i > 0 && !slots[i - 1];
@@ -4897,7 +5274,17 @@ const App = {
                 // Include anche gli item con owner === p non ancora nell'unlocked pool
                 const ownerItems = Object.keys(EQUIPMENT).filter(id => EQUIPMENT[id].owner === p && !unlocked.includes(id));
                 const pool       = [...unlocked, ...ownerItems];
-                const available  = pool.filter(id => !usedIds.has(id) && (!EQUIPMENT[id].owner || EQUIPMENT[id].owner === p) && !EQUIPMENT[id].stageOnly);
+                const noWeapons  = !!(CHARACTERS[p]?.noWeapons);
+                const baseEquip  = CHARACTERS[p]?.baseEquipment || [];
+                const available  = pool
+                    .filter(id => !usedIds.has(id) && (!EQUIPMENT[id].owner || EQUIPMENT[id].owner === p) && !EQUIPMENT[id].stageOnly && !(noWeapons && EQUIPMENT[id].type === 'weapon'))
+                    .sort((a, b) => {
+                        const ai = baseEquip.indexOf(a), bi = baseEquip.indexOf(b);
+                        if (ai !== -1 && bi !== -1) return ai - bi;
+                        if (ai !== -1) return -1;
+                        if (bi !== -1) return 1;
+                        return a.localeCompare(b, undefined, { numeric: true });
+                    });
 
                 const ddId = `eq-dd-${p}-${i}`;
                 const allOpts = [
@@ -4937,7 +5324,6 @@ const App = {
 
             return `<div class="eq-player-block" style="--player-color:${color}">
                 <div class="eq-player-name" style="color:${color}">◆ ${p.toUpperCase()}</div>
-                ${isDebut ? `<div class="eq-debut-label">DEBUTTO — equipaggiamento di base</div>` : ''}
                 <div class="eq-slots">${slotsHtml}</div>
             </div>`;
         }).join('');
