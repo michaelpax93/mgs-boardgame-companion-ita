@@ -3103,6 +3103,16 @@ const App = {
         audio.play().catch(() => {});
     },
 
+    _playSoundSequence(files) {
+        if (!files || files.length === 0) return;
+        const [first, ...rest] = files;
+        if (rest.length === 0) {
+            this._playActionSound(first);
+        } else {
+            this._playSfxOnce(first, () => this._playSoundSequence(rest));
+        }
+    },
+
     _onBussataAction(playerName) {
         const marker = this.markerState[playerName] || {};
         // Se nessun segnalino attivo, attiva il ?
@@ -3141,6 +3151,7 @@ const App = {
     _resolvePlanciaVarActions(playerName, stage) {
         const ch = CHARACTERS[playerName];
         const stageVarOverride = stage?.variableActions?.[playerName];
+        if (stageVarOverride === null) return [];
         if (stageVarOverride !== undefined && stageVarOverride.length === 0 && stage?.bossTurnSections?.length) {
             const varHotspots = (ch.hotspots || []).filter(h => h.type === 'variable');
             const result = [];
@@ -3192,7 +3203,7 @@ const App = {
             const isUsed     = isAbility && !!usedMap[a.id];
             const soundCall  = a.id === 'bussata'
                 ? `App._onBussataAction('${playerName}');`
-                : (a.sound ? `App._playActionSound('${a.sound}');` : '');
+                : (a.sounds ? `App._playSoundSequence(${JSON.stringify(a.sounds)});` : (a.sound ? `App._playActionSound('${a.sound}');` : ''));
             const toggleCall = (isAbility && a.type !== 'passive')
                 ? `App.toggleAbility('${playerName}','${a.id}');`
                 : '';
@@ -3891,10 +3902,13 @@ const App = {
                 ? `<button class="boss-defense boss-defense-btn" onclick="App.openMantisDefensePopup()"${this.mantisDefenseSolved ? ' disabled' : ''}>DIFESA: ${defenseVal}</button>`
                 : `<div class="boss-defense">DIFESA: ${defenseVal}</div>`)
             : '';
+        const minusOnclick = enemy.damageSelectorPopup
+            ? `App._showBossDamageSelectorPopup('${enemy.id}')`
+            : `App.adjustBossHp('${enemy.id}',-1)`;
         return `<div class="player-card boss-enemy-card">
             <div class="player-card-name" style="color:var(--codec-red)">${enemy.name}</div>
             <div class="hp-tracker">
-                <button class="hp-btn" onclick="App.adjustBossHp('${enemy.id}',-1)">−</button>
+                <button class="hp-btn" onclick="${minusOnclick}">−</button>
                 <span class="hp-value" id="boss-hp-${enemy.id}">${hp}</span>
                 <button class="hp-btn" onclick="App.adjustBossHp('${enemy.id}',+1)">+</button>
             </div>
@@ -4061,13 +4075,13 @@ const App = {
 
     _buildBossTurnHtml(stage) {
         const enemies = stage?.bossEnemies || [];
-        const enemiesHtml = enemies.filter(e => e.attacks?.length || e.attackSound || e.movementSounds?.length || (e.cards && e.cards.length)).map(e => {
+        const enemiesHtml = enemies.filter(e => e.attacks?.length || e.attackSound || e.attackSounds?.length || e.movementSounds?.length || (e.cards && e.cards.length)).map(e => {
             let attackBtn = '';
             if (e.attacks && e.attacks.length) {
                 attackBtn = e.attacks.map((atk, ai) =>
                     `<button class="btn-codec boss-attack-btn" onclick="App.playBossEnemyAttack('${e.id}',${ai})">▶ ${atk.name}</button>`
                 ).join('');
-            } else if (e.attackSound) {
+            } else if (e.attackSound || e.attackSounds?.length) {
                 attackBtn = `<button class="btn-codec boss-attack-btn" onclick="App.playBossAttack('${e.id}')">▶ ATTACCA</button>`;
             }
             const movementBtn = e.movementSounds?.length
@@ -4112,7 +4126,8 @@ const App = {
         const a = sec.actions[actionIndex];
         if (!a) return;
         const pName = playerName ?? this._activePlanciaPlayer();
-        if (a.sound) this.playSfx(a.sound);
+        if (a.sounds) this._playSoundSequence(a.sounds);
+        else if (a.sound) this.playSfx(a.sound);
         let needsRender = false;
         if (a.usesCharge && sec.charges != null) {
             if (!this.bossSectionChargeState[pName]) this.bossSectionChargeState[pName] = {};
@@ -4129,9 +4144,54 @@ const App = {
         if (a.attack) this.showAttackResultPopup(null, null, a);
     },
 
+    _showBossDamageSelectorPopup(enemyId) {
+        const enemy = this.currentStage?.bossEnemies?.find(e => e.id === enemyId);
+        if (!enemy) return;
+        const max = enemy.damageSelectorMax ?? 4;
+        const btns = document.getElementById('elicottero-damage-btns');
+        btns.innerHTML = Array.from({ length: max + 1 }, (_, i) =>
+            `<button class="btn-codec" style="font-size:1.4rem;padding:0.6rem 1.2rem;min-width:3.2rem" onclick="App._confirmBossDamageSelectorPopup('${enemyId}',${i})">${i}</button>`
+        ).join('');
+        document.getElementById('elicottero-damage-popup').style.display = 'flex';
+    },
+
+    _confirmBossDamageSelectorPopup(enemyId, amount) {
+        document.getElementById('elicottero-damage-popup').style.display = 'none';
+        if (amount <= 0) return;
+        const enemy = this.currentStage?.bossEnemies?.find(e => e.id === enemyId);
+        const currentHp = this.bossHpState?.[enemyId] ?? 0;
+        const isLethal = amount >= currentHp;
+        this.adjustBossHp(enemyId, -amount, false);
+        this._playElicotteroHitSounds(amount, isLethal, isLethal ? enemy : null);
+    },
+
+    _playElicotteroHitSounds(amount, isLethal, enemyForKo = null) {
+        const base = 'audio/sfx/elicottero/';
+        const finalSound = (isLethal || amount === 2 || amount === 3)
+            ? `${base}ferito-2-3.wav`
+            : amount === 1 ? `${base}ferito-1.wav`
+            : `${base}ferito-4.wav`;
+        this._playActionSound('audio/sfx/esplosione.wav');
+        setTimeout(() => {
+            this._playSfxOnce(`${base}elicottero-colpito.wav`, () => {
+                if (enemyForKo) {
+                    this._playSfxOnce(finalSound, () => this._triggerBossKo(enemyForKo));
+                } else {
+                    this._playActionSound(finalSound);
+                }
+            });
+        }, 250);
+    },
+
     playBossAttack(enemyId) {
         const enemy = this.currentStage?.bossEnemies?.find(e => e.id === enemyId);
-        if (!enemy?.attackSound) return;
+        if (!enemy) return;
+        if (enemy.attackSounds?.length) {
+            const file = enemy.attackSounds[Math.floor(Math.random() * enemy.attackSounds.length)];
+            this.playSfx(file);
+            return;
+        }
+        if (!enemy.attackSound) return;
         if (enemy.aboveHalfAttackSound) {
             const hp    = this.bossHpState?.[enemyId] ?? 0;
             const maxHp = this.bossMaxHpState?.[enemyId] ?? 0;
@@ -4158,6 +4218,10 @@ const App = {
             a.play().catch(() => {});
         };
         playN(repeat);
+        if (enemy.movementSounds2?.length) {
+            const file2 = enemy.movementSounds2[Math.floor(Math.random() * enemy.movementSounds2.length)];
+            setTimeout(() => this._playActionSound(file2), enemy.movementSounds2Delay ?? 250);
+        }
     },
 
     bossBtnCounterAdj(enemyId, btnId, delta) {
@@ -4823,6 +4887,11 @@ const App = {
                             } : null);
                         }, i * GAP);
                     }
+                } else if (enemy?.damageSelectorPopup) {
+                    const prevHp = this.bossHpState?.[enemyId] ?? 0;
+                    const isLethal = amount >= prevHp;
+                    this.adjustBossHp(enemyId, -amount, false);
+                    this._playElicotteroHitSounds(amount, isLethal, isLethal ? enemy : null);
                 } else {
                     this.adjustBossHp(enemyId, -amount);
                 }

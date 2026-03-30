@@ -320,6 +320,7 @@ const CHARACTERS = {
         hurtSound:     'audio/sfx/ninja/ferito.wav',
         hurtPlusSound: 'audio/sfx/ninja/ferito+.wav',
         deathSound:    'audio/sfx/ninja/morte.wav',
+        gameOverSound: "01",
         debutStage: 9,
         baseEquipment: ["GF1", "GF2", "GF3"],
         hotspots: [
@@ -466,6 +467,7 @@ const CHARACTERS = {
         hurtSound:     'audio/azioni/otacon/ferito.wav',
         hurtPlusSound: 'audio/azioni/otacon/ferito+.wav',
         deathSound:    'audio/azioni/otacon/morte.wav',
+        gameOverSound: "01",
         debutStage: 9,
         baseEquipment: ["HE1", "HE2"],
         hotspots: [

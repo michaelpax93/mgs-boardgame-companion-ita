@@ -412,6 +412,26 @@ const EQUIPMENT = {
         },
     },
 
+    "017": {
+        name: "LANCIAMISSILI",
+        type: "weapon",
+        itemType: "arma a distanza",
+        itemSubtype: "missile",
+        charges: 3,
+        action: {
+            name: "LANCIA",
+            cost: 1,
+            desc: "Scarta 1 proiettile e colloca 1 missile in una casella adiacente vuota. Poi muovi il missile in linea retta, allontanandolo dalla tua miniatura finché non sta per muoversi contro un ostacolo o non occupa la stessa casella di una miniatura. Quando succede, attacca tutte le miniature entro 1 casella e in Linea di Vista. Poi rimuovi il missile. Se si muove fuori dalla mappa, rimuovi il missile. RUMOROSA: Colloca il tuo segnalino ! sotto la tua miniatura.",
+            dice: [{ color: "white", count: 3 }],
+            alertImmediate: true,
+            attack: true,
+            attackType: "ranged",
+            targets: 1,
+            category: "missile",
+            usesCharge: true,
+        },
+    },
+
     "016": {
         name: "CORDA",
         type: "item",
