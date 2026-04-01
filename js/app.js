@@ -154,6 +154,10 @@ const App = {
     _ketchupPendingEvent: null,
     ketchupUsed: false,
 
+    // Stage 11 Sniper Wolf — modalità ibrida Boss/Sneaking con Otacon
+    otaconEnemySubPhase: 'select',   // 'select' | 'sniper-wolf' | 'guards'
+    otaconEnemyDone: null,           // Set dei nemici che hanno già agito questo round
+
     // Contatore azioni rumorose (noise:true) per giocatore nel turno corrente
     // Azzerato a inizio round. A fine turno del giocatore mostra popup promemoria dadi.
     _noiseCountThisTurn: {},
@@ -1196,11 +1200,12 @@ const App = {
         const activeZone   = activePlayer != null ? (this.playerZoneState[activePlayer] ?? 0) : null;
         (this.currentStage?.events || []).forEach(ev => {
             if (this.eventClickedState[ev.id]) return;
-            const prereqMet = !ev.requiresEvent || !!this.eventClickedState[ev.requiresEvent];
-            const zoneMet   = ev.requiresZone == null || activeZone === ev.requiresZone;
+            const prereqMet   = !ev.requiresEvent  || !!this.eventClickedState[ev.requiresEvent];
+            const zoneMet     = ev.requiresZone == null || activeZone === ev.requiresZone;
+            const playerMet   = !ev.requiresPlayer  || activePlayer === ev.requiresPlayer;
             const btn = document.getElementById(`btn-event-${ev.id}`);
             if (!btn) return;
-            const enabled = isPlayerTurn && prereqMet && zoneMet;
+            const enabled = isPlayerTurn && prereqMet && zoneMet && playerMet;
             btn.disabled = !enabled;
             btn.style.opacity = enabled ? '1' : '0.35';
         });
@@ -1209,15 +1214,26 @@ const App = {
     _updateOutroBtn() {
         const stage = this.currentStage;
         if (!stage) return;
+        const btn = document.getElementById('btn-outro');
+        if (!btn) return;
+
+        // Modalità ibrida Sniper Wolf con Otacon: outro sbloccato da tessera OPPURE da Wolf sconfitta
+        if (stage.otaconHybrid && this.stagePlayers.includes('Otacon')) {
+            const tesseraEv = (stage.events || []).find(e => e.otaconOutro);
+            const tesseraClicked = tesseraEv ? !!this.eventClickedState[tesseraEv.id] : false;
+            const wolfDead = (this.bossHpState?.['wolf'] ?? 1) <= 0;
+            const enabled = (tesseraClicked || wolfDead) && !this.outroPlayed;
+            btn.disabled = !enabled;
+            btn.style.opacity = enabled ? '1' : '0.3';
+            return;
+        }
+
         const required = (stage.events || []).filter(e => e.requiredForOutro);
         const allDone = required.every(e => !!this.eventClickedState[e.id]);
         const hasOutro = (stage.outro && stage.outro.length > 0) || stage.outroPart2 || required.length > 0;
         const enabled = hasOutro && allDone && !this.outroPlayed && !stage.isBoss;
-        const btn = document.getElementById('btn-outro');
-        if (btn) {
-            btn.disabled = !enabled;
-            btn.style.opacity = enabled ? '1' : '0.3';
-        }
+        btn.disabled = !enabled;
+        btn.style.opacity = enabled ? '1' : '0.3';
     },
 
     playOutro() {
@@ -1566,6 +1582,10 @@ const App = {
         // Stage 1→2: salvataggio speciale dopo intro dello stage 2, non qui
         if (nextStage.id === 2) {
             this.showPlayersPopup(nextStage);
+        } else if (this.currentStage?.id === 11 && nextStage.id === 12) {
+            // Video interstitial disco2 tra stage 11 e stage 12, poi Mei Ling
+            this._pendingVideoEndCallback = () => this._triggerInlineSave(nextStage);
+            this.playVideo('video/disco2.mp4');
         } else {
             this._triggerInlineSave(nextStage);
         }
@@ -1905,6 +1925,9 @@ const App = {
                 this._updateEventButtonsForTurn();
             }
         }
+
+        // Non cambiare musica se alert/evasion è attivo (la zona è già aggiornata sopra)
+        if (this.alertState !== 'normal') return;
 
         const isSwitching = this.musicLoop && this.musicLoop.isPlaying();
         if (isSwitching && stage && stage.elevator) {
@@ -2570,7 +2593,7 @@ const App = {
         const player = this._missilePendingPlayer;
         this._missilePendingPlayer = null;
         if (!player) return;
-        if (hit && !this.currentStage?.isBoss) {
+        if (hit) {
             const nikitaAction = EQUIPMENT['E06B']?.action;
             if (nikitaAction) this.showAttackResultPopup(player, 'eq-E06B', nikitaAction);
         }
@@ -2638,7 +2661,9 @@ const App = {
         const ch = CHARACTERS[playerName];
         if (!ch) return '<div class="no-char-data">—</div>';
         const varActions = (stage.variableActions && stage.variableActions[playerName])
-            ? stage.variableActions[playerName].map(id => ch.defaultVariableActions.find(a => a.id === id)).filter(Boolean)
+            ? stage.variableActions[playerName].map(item =>
+                typeof item === 'string' ? (ch.defaultVariableActions || []).find(a => a.id === item) : item
+              ).filter(Boolean)
             : (ch.defaultVariableActions || []);
         if (!varActions.length) return '<div class="no-char-data">—</div>';
         return varActions.map(a => this._buildPanelActionBtn(a)).join('');
@@ -2952,14 +2977,16 @@ const App = {
             metaHtml = `<span class="tooltip-tag">${typeLabel}</span>`;
         } else {
             metaHtml = `<span class="tooltip-tag">${a.cost}● azione</span>`
-                + (a.noise ? `<span class="tooltip-tag tooltip-noise">🔊 Rumore</span>` : '');
+                + (a.noise ? `<span class="tooltip-tag tooltip-noise">🔊 Rumore</span>` : '')
+                + (a.weaponName ? `<span class="tooltip-tag">${a.weaponName}</span>` : '');
         }
 
         tooltip.innerHTML = `
             <div class="tooltip-name">${a.name}</div>
             <div class="tooltip-meta">${metaHtml}</div>
             <div class="tooltip-desc">${a.desc}</div>
-            ${diceHtml}`;
+            ${diceHtml}
+            ${a.passiveDesc ? `<div class="tooltip-passive" style="margin-top:8px;padding-top:6px;border-top:1px solid #333"><b>PASSIVA:</b> ${a.passiveDesc}</div>` : ''}`;
 
         tooltip.style.display = 'block';
         const r = btn.getBoundingClientRect();
@@ -3173,7 +3200,9 @@ const App = {
             return result;
         }
         if (stageVarOverride !== undefined) {
-            return stageVarOverride.map(id => (ch.defaultVariableActions || []).find(a => a.id === id)).filter(Boolean);
+            return stageVarOverride.map(item =>
+                typeof item === 'string' ? (ch.defaultVariableActions || []).find(a => a.id === item) : item
+            ).filter(Boolean);
         }
         return ch.defaultVariableActions || [];
     },
@@ -3274,6 +3303,9 @@ const App = {
             const attackCall = a.attack
                 ? `App.showAttackResultPopup('${playerName}','${a.id}');`
                 : '';
+            const miraAttackCall = a.miraAttackPopup
+                ? `App.showMiraAttackPopup();`
+                : '';
             const autoKillCall = a.autoKill
                 ? `App.processAutoKill('${playerName}');`
                 : '';
@@ -3296,12 +3328,14 @@ const App = {
                     id="hotspot-${playerName}-${h.ref}"
                     ${isDisabled ? 'disabled' : ''}
                     ${isPassiveAbility ? 'style="cursor:default;pointer-events:none"' : ''}
-                    onclick="${spendCall}${soundCall}${noiseCall}${attackCall}${autoKillCall}${toggleCall}${concModeCall}App._pulseHotspot(this);event.stopPropagation()">
+                    onclick="${spendCall}${soundCall}${miraAttackCall}${noiseCall}${attackCall}${autoKillCall}${toggleCall}${concModeCall}App._pulseHotspot(this);event.stopPropagation()">
                     <span class="circle-cost">${costLabel}</span>
                 </button>
                 <div class="plancia-action-text">
                     <div class="plancia-action-name">${a.name}${noiseHtml}</div>
+                    ${a.weaponName ? `<div class="plancia-action-weapon">${a.weaponName}</div>` : ''}
                     <div class="plancia-action-desc">${a.desc}</div>
+                    ${a.passiveDesc ? `<div class="plancia-action-passive"><b>PASSIVA:</b> ${a.passiveDesc}</div>` : ''}
                     ${diceHtml}
                 </div>
             </div>`;
@@ -3475,6 +3509,35 @@ const App = {
                 }
             }
 
+            // Modalità ibrida Sniper Wolf con Otacon
+            if (stage?.otaconHybrid && this.stagePlayers.includes('Otacon')) {
+                const subPhase = this.otaconEnemySubPhase || 'select';
+                let enemyLabel, headerCtrlHtml, phasesHtml;
+                if (subPhase === 'sniper-wolf') {
+                    enemyLabel    = 'TURNO SNIPER WOLF';
+                    headerCtrlHtml = `<button class="btn-sound btn-alert turn-end-btn" onclick="App.endOtaconEnemyTurn()">FINE TURNO SNIPER WOLF</button>`;
+                    phasesHtml    = this._buildBossTurnHtml(stage);
+                } else if (subPhase === 'guards') {
+                    enemyLabel    = 'FASE DELLE GUARDIE';
+                    headerCtrlHtml = `<button class="btn-sound btn-alert turn-end-btn" onclick="App.endOtaconEnemyTurn()">FINE TURNO GUARDIE</button>`;
+                    phasesHtml    = `<div id="soldier-phases">${this._buildSoldierPhaseHtml(stage)}</div>`;
+                } else {
+                    enemyLabel    = 'FASE DEI NEMICI';
+                    headerCtrlHtml = '';
+                    phasesHtml    = this._buildOtaconHybridEnemyHtml(stage);
+                }
+                content.innerHTML = `
+                    <div class="turn-header">
+                        <div class="turn-phase-badge turn-phase-soldiers">
+                            ${enemyLabel} <span class="turn-round-label">Round ${this.turnRound}</span>
+                        </div>
+                        ${headerCtrlHtml ? `<div class="turn-header-controls">${headerCtrlHtml}</div>` : ''}
+                    </div>
+                    ${phasesHtml}`;
+                this._updateEventButtonsForTurn();
+                return;
+            }
+
             const label    = isBoss ? 'TURNO BOSS'      : 'FASE DELLE GUARDIE';
             const endLabel = isBoss ? 'FINE TURNO BOSS' : 'FINE FASE GUARDIE';
             const phasesHtml = (!isBoss && stage)
@@ -3593,6 +3656,11 @@ const App = {
         this.soldierCameraCard = null;
         this.soldierGuardAction = null;
         this._guardsAttackedThisTurn = false;
+        // Init stato selezione nemici per modalità ibrida Sniper Wolf / Otacon
+        if (this.currentStage?.otaconHybrid && this.stagePlayers.includes('Otacon')) {
+            this.otaconEnemySubPhase = 'select';
+            this.otaconEnemyDone = new Set();
+        }
         this._renderTurnSection();
     },
 
@@ -3608,10 +3676,21 @@ const App = {
     _isEffectiveBoss(stage) {
         if (!stage?.isBoss) return false;
         if (stage.hybridSneaking && this.stagePlayers.length >= stage.hybridSneaking.minPlayers) return false;
+        if (stage.otaconHybrid && this.stagePlayers.includes('Otacon')) {
+            // Fase giocatori: è boss solo per i non-Otacon; fase nemici: trattato come sneaking
+            if (this.turnPhase === 'players') {
+                const active = (this.stagePlayers.length > 1 ? this.selectedPlayerForTurn : this.stagePlayers[0]) ?? this.stagePlayers[0];
+                return active !== 'Otacon';
+            }
+            return false; // fase nemici → gestita separatamente, non è boss puro
+        }
         return true;
     },
 
     _resolveOrderCards(stage) {
+        if (stage?.otaconHybrid && this.stagePlayers.includes('Otacon')) {
+            return stage.orderCardsWithOtacon ?? null;
+        }
         const oc = stage?.orderCards;
         if (oc == null) return null;
         if (typeof oc === 'object') {
@@ -3619,6 +3698,62 @@ const App = {
             return oc[n] ?? oc[Object.keys(oc).sort((a, b) => b - a).find(k => k <= n)] ?? null;
         }
         return oc;
+    },
+
+    // ============================================
+    // FASE NEMICI — IBRIDA SNIPER WOLF (Otacon)
+    // ============================================
+
+    // Schermata di selezione: Sniper Wolf o Guardie
+    _buildOtaconHybridEnemyHtml(stage) {
+        const done = this.otaconEnemyDone || new Set();
+        const options = [
+            { id: 'sniper-wolf', label: 'SNIPER WOLF', color: 'var(--codec-red)' },
+            { id: 'guards',      label: 'GUARDIE',     color: 'var(--codec-green)' },
+        ];
+        const itemsHtml = options.map(o => {
+            const isDone = done.has(o.id);
+            return `<label class="player-radio-item${isDone ? ' done' : ''}"
+                        onclick="${isDone ? '' : `App.selectOtaconEnemy('${o.id}')`}"
+                        style="cursor:${isDone ? 'default' : 'pointer'}">
+                <span class="player-radio-dot${isDone ? '' : ' sel'}" style="${isDone ? '' : `color:${o.color}`}">◆</span>
+                <span class="player-radio-name" style="${isDone ? '' : `color:${o.color}`}">${o.label}</span>
+                ${isDone ? '<span class="player-done-badge">✓ FATTO</span>' : ''}
+            </label>`;
+        }).join('');
+        return `<div class="player-select-phase">
+            <div class="player-select-label">SCEGLI NEMICO</div>
+            <div class="player-radio-list">${itemsHtml}</div>
+            <button class="btn-codec player-confirm-btn" onclick="App.endSoldiersTurn()">
+                <span class="btn-inner">▶ FINE FASE NEMICI</span>
+            </button>
+        </div>`;
+    },
+
+    // Selezione Sniper Wolf o Guardie
+    selectOtaconEnemy(type) {
+        if ((this.otaconEnemyDone || new Set()).has(type)) return;
+        this.otaconEnemySubPhase = type;
+        this._renderTurnSection();
+    },
+
+    // Fine turno di un nemico → torna alla selezione
+    endOtaconEnemyTurn() {
+        if (!this.otaconEnemyDone) this.otaconEnemyDone = new Set();
+        const wasGuards = this.otaconEnemySubPhase === 'guards';
+        this.otaconEnemyDone.add(this.otaconEnemySubPhase);
+        if (wasGuards) {
+            // Auto-evasione: stesso comportamento di endSoldiersTurn per le guardie
+            if (this.alertState === 'alert' && !this._guardsAttackedThisTurn && !this._inCameraSight) {
+                this.triggerEvasion();
+            }
+            this.soldierGuardCard   = null;
+            this.soldierCameraCard  = null;
+            this.soldierGuardAction = null;
+            this._guardsAttackedThisTurn = false;
+        }
+        this.otaconEnemySubPhase = 'select';
+        this._renderTurnSection();
     },
 
     endSoldiersTurn() {
@@ -3659,18 +3794,16 @@ const App = {
 
         // Fase 1 — azioni guardie
         const guardCardsHtml = this.GUARD_CARDS.map(c => {
-            const sel  = this.soldierGuardCard === c.id;
-            const snd  = c.sound ? `App._playActionSound('${c.sound}');` : '';
+            const sel = this.soldierGuardCard === c.id;
             return `<button class="soldier-card${sel ? ' selected' : ''}"
-                onclick="${snd}App.selectGuardCard('${c.id}')">${c.label}</button>`;
+                onclick="App.selectGuardCard('${c.id}')">${c.label}</button>`;
         }).join('');
 
         // Fase 2 — telecamere
         const cameraCardsHtml = this.CAMERA_CARDS.map(c => {
             const sel = this.soldierCameraCard === c.id;
-            const snd = c.sound ? `App._playActionSound('${c.sound}');` : '';
             return `<button class="soldier-card${sel ? ' selected' : ''}"
-                onclick="${snd}App.selectCameraCard('${c.id}')">${c.label}</button>`;
+                onclick="App.selectCameraCard('${c.id}')">${c.label}</button>`;
         }).join('');
 
         // Fase 3 — attivare guardie (singola riga per tutte)
@@ -3681,10 +3814,9 @@ const App = {
                 if (a.alertOnly && !inAlert) return '';
                 if (a.boxOnly && !anyInBox) return '';
                 const isSel = this.soldierGuardAction === a.id;
-                const snd   = a.sound ? `App._playActionSound('${a.sound}');` : '';
                 const extra = a.id === 'attacca' ? ' guard-attacca' : '';
                 return `<button class="guard-action-btn${isSel ? ' sel' : ''}${extra}"
-                    onclick="${snd}App.setGuardAction('${a.id}')">${a.label}</button>`;
+                    onclick="App.setGuardAction('${a.id}')">${a.label}</button>`;
             }).join('');
 
             let reactionHtml = '';
@@ -3745,20 +3877,28 @@ const App = {
     },
 
     selectGuardCard(id) {
-        const wasSelected = this.soldierGuardCard === id;
-        this.soldierGuardCard = wasSelected ? null : id;
-        if (!wasSelected && id === 'radio') this._radioRestoreGuards();
+        if (this.soldierGuardCard === id) return;
+        this.soldierGuardCard = id;
+        const c = this.GUARD_CARDS.find(c => c.id === id);
+        if (c?.sound) this._playActionSound(c.sound);
+        if (id === 'radio') this._radioRestoreGuards();
         this._renderSoldierPhases();
     },
 
     selectCameraCard(id) {
-        this.soldierCameraCard = this.soldierCameraCard === id ? null : id;
-        if (this.soldierCameraCard === 'cambiano') this._inCameraSight = false;
+        if (this.soldierCameraCard === id) return;
+        this.soldierCameraCard = id;
+        const c = this.CAMERA_CARDS.find(c => c.id === id);
+        if (c?.sound) this._playActionSound(c.sound);
+        if (id === 'cambiano') this._inCameraSight = false;
         this._renderSoldierPhases();
     },
 
     setGuardAction(action) {
-        this.soldierGuardAction = this.soldierGuardAction === action ? null : action;
+        if (this.soldierGuardAction === action) return;
+        this.soldierGuardAction = action;
+        const a = this.GUARD_ACTIONS.find(a => a.id === action);
+        if (a?.sound) this._playActionSound(a.sound);
         if (action === 'attacca') this._guardsAttackedThisTurn = true;
         this._renderSoldierPhases();
     },
@@ -3797,6 +3937,8 @@ const App = {
         this.bossHpState           = this.bossHpState    || {};
         this.bossMaxHpState        = this.bossMaxHpState || {};
         this._bossCardFollowUpUsed  = {};
+        // Cancella HP precedenti per i nemici di questo stage (evita stale state da run precedenti)
+        (stage.bossEnemies || []).forEach(e => { delete this.bossHpState[e.id]; });
         this._bossSpecialBtnUsed    = {};
         this._bossCounterFirstUsed  = {};
         this._bossFirstHitUsed      = {};
@@ -3804,7 +3946,9 @@ const App = {
         this.mantisDefenseStep = 0;
         this.mantisDefenseSolved = false;
         const bossEnemies = stage.bossEnemies || [];
-        const playerCount = players.length;
+        const playerCount = (stage.otaconHybrid && players.includes('Otacon'))
+            ? players.filter(p => p !== 'Otacon').length
+            : players.length;
         bossEnemies.forEach(e => {
             const hp = e.hpByPlayerCount
                 ? (e.hpByPlayerCount[playerCount] ?? e.hpByPlayerCount[1] ?? e.hp ?? 10)
@@ -3817,7 +3961,16 @@ const App = {
 
         const statsHtml = this._buildSessionStatsHtml();
         const bossHtml  = bossEnemies.map(e => this._buildBossEnemyCard(e)).join('');
-        sidebar.innerHTML = statsHtml + bossHtml + players.map(p => this._buildPlayerCard(p)).join('');
+        const flipCardsHtml = bossEnemies
+            .filter(e => e.flipCard && e.image)
+            .map(e => `<div class="boss-flip-card boss-flip-card-sidebar" id="flip-card-${e.id}"
+                    onclick="App.flipBossCard('${e.id}')">
+                <div class="boss-flip-inner">
+                    <div class="boss-flip-front"><span class="boss-flip-question">?</span></div>
+                    <div class="boss-flip-back"><img src="${e.image}" alt="${e.name}"></div>
+                </div>
+            </div>`).join('');
+        sidebar.innerHTML = statsHtml + bossHtml + players.map(p => this._buildPlayerCard(p)).join('') + flipCardsHtml;
         sidebar.style.display = 'flex';
     },
 
@@ -3857,6 +4010,8 @@ const App = {
         const stage  = this.currentStage;
         const currentZone = (this.playerZoneState && this.playerZoneState[playerName]) || 0;
         const isBoss    = stage?.isBoss || false;
+        // In modalità otaconHybrid i segnalini ! e ? appaiono solo per Otacon
+        const showMarkers = !isBoss || (stage?.otaconHybrid && this.stagePlayers.includes('Otacon') && playerName === 'Otacon');
         const multiZone = !isBoss && stage && stage.enemies && stage.enemies.length > 1;
         const zoneBlocked = stage?.blockZoneChangeUntilEvent
             && !this.eventClickedState[stage.blockZoneChangeUntilEvent];
@@ -3876,7 +4031,7 @@ const App = {
                 <span class="hp-value" id="hp-${playerName}">${hp}</span>
                 <button class="hp-btn" onclick="App.adjustHp('${playerName}',+1)">+</button>
             </div>
-            ${!isBoss ? `<div class="player-markers">
+            ${showMarkers ? `<div class="player-markers">
                 <button class="marker-btn marker-alert${marker.alert ? ' active' : ''}"
                     id="marker-alert-${playerName}"
                     onclick="App.toggleMarker('${playerName}','alert')">
@@ -3905,7 +4060,7 @@ const App = {
         const minusOnclick = enemy.damageSelectorPopup
             ? `App._showBossDamageSelectorPopup('${enemy.id}')`
             : `App.adjustBossHp('${enemy.id}',-1)`;
-        return `<div class="player-card boss-enemy-card">
+        const cardHtml = `<div class="player-card boss-enemy-card">
             <div class="player-card-name" style="color:var(--codec-red)">${enemy.name}</div>
             <div class="hp-tracker">
                 <button class="hp-btn" onclick="${minusOnclick}">−</button>
@@ -3914,6 +4069,7 @@ const App = {
             </div>
             ${defenseHtml}
         </div>`;
+        return cardHtml;
     },
 
     openMantisDefensePopup() {
@@ -4075,16 +4231,18 @@ const App = {
 
     _buildBossTurnHtml(stage) {
         const enemies = stage?.bossEnemies || [];
-        const enemiesHtml = enemies.filter(e => e.attacks?.length || e.attackSound || e.attackSounds?.length || e.movementSounds?.length || (e.cards && e.cards.length)).map(e => {
+        const enemiesHtml = enemies.filter(e => e.attacks?.length || e.attackSound || e.attackSounds?.length || e.movementSounds?.length || e.movementHighHP || e.movementLowHP || e.playerTargetAttack || (e.cards && e.cards.length)).map(e => {
             let attackBtn = '';
             if (e.attacks && e.attacks.length) {
                 attackBtn = e.attacks.map((atk, ai) =>
                     `<button class="btn-codec boss-attack-btn" onclick="App.playBossEnemyAttack('${e.id}',${ai})">▶ ${atk.name}</button>`
                 ).join('');
+            } else if (e.playerTargetAttack) {
+                attackBtn = `<button class="btn-codec boss-attack-btn" onclick="App.openBossPlayerAttackPopup('${e.id}')">▶ ATTACCA</button>`;
             } else if (e.attackSound || e.attackSounds?.length) {
                 attackBtn = `<button class="btn-codec boss-attack-btn" onclick="App.playBossAttack('${e.id}')">▶ ATTACCA</button>`;
             }
-            const movementBtn = e.movementSounds?.length
+            const movementBtn = (e.movementHighHP || e.movementLowHP || e.movementSounds?.length)
                 ? `<button class="btn-codec boss-attack-btn" onclick="App.playBossMovement('${e.id}')">▶ MOVIMENTO</button>`
                 : '';
             const specialBtns = (e.specialButtons || []).map(sb => {
@@ -4205,6 +4363,20 @@ const App = {
 
     playBossMovement(enemyId) {
         const enemy = this.currentStage?.bossEnemies?.find(e => e.id === enemyId);
+        if (!enemy) return;
+
+        // Movimento condizionale HP (es. Vulcan Raven)
+        if (enemy.movementHighHP || enemy.movementLowHP) {
+            const hp    = this.bossHpState?.[enemyId] ?? 0;
+            const maxHp = this.bossMaxHpState?.[enemyId] ?? 0;
+            const cfg   = (maxHp > 0 && hp > maxHp / 2) ? enemy.movementHighHP : enemy.movementLowHP;
+            if (!cfg) return;
+            if (cfg.leadSound) this.playSfx(cfg.leadSound);
+            const file = cfg.sounds[Math.floor(Math.random() * cfg.sounds.length)];
+            setTimeout(() => this.playSfx(file), 400);
+            return;
+        }
+
         const sounds = enemy?.movementSounds;
         if (!sounds?.length) return;
         const entry = sounds[Math.floor(Math.random() * sounds.length)];
@@ -4276,8 +4448,68 @@ const App = {
         const enemy = this.currentStage?.bossEnemies?.find(e => e.id === enemyId);
         const atk   = enemy?.attacks?.[attackIndex];
         if (!atk) return;
-        if (atk.sound) this.playSfx(atk.sound);
+        if (atk.sound) this.playSfx(atk.sound, undefined, atk.volume);
         if (atk.hitPopup) this._showCannonHitPopup(atk);
+    },
+
+    // ============================================
+    // BOSS → PLAYER ATTACK POPUP (es. Vulcan Raven)
+    // ============================================
+    _bossPlayerAttackEnemyId: null,
+    _bossPlayerAttackTarget: null,  // playerName o null
+    _bossPlayerAttackDamage: 1,
+
+    openBossPlayerAttackPopup(enemyId) {
+        const enemy = this.currentStage?.bossEnemies?.find(e => e.id === enemyId);
+        if (!enemy) return;
+        if (enemy.playerTargetAttack?.attackSound) this.playSfx(enemy.playerTargetAttack.attackSound);
+        this._bossPlayerAttackEnemyId = enemyId;
+        this._bossPlayerAttackTarget  = null;
+        this._bossPlayerAttackDamage  = 1;
+
+        const players = this.stagePlayers || [];
+        const list = document.getElementById('boss-player-attack-list');
+        if (list) {
+            list.innerHTML = [
+                `<label class="boss-player-atk-option"><input type="radio" name="boss-player-atk" value="" checked onchange="App._bossPlayerAttackTarget=null"> — nessun giocatore —</label>`,
+                ...players.map(p =>
+                    `<label class="boss-player-atk-option"><input type="radio" name="boss-player-atk" value="${p}" onchange="App._bossPlayerAttackTarget='${p}'"> ${p}</label>`
+                ),
+            ].join('');
+        }
+        const dmgEl = document.getElementById('boss-player-attack-dmg');
+        if (dmgEl) dmgEl.textContent = this._bossPlayerAttackDamage;
+        const popup = document.getElementById('boss-player-attack-popup');
+        if (popup) popup.style.display = 'flex';
+    },
+
+    bossPlayerAttackAdjDmg(delta) {
+        this._bossPlayerAttackDamage = Math.max(1, (this._bossPlayerAttackDamage || 1) + delta);
+        const el = document.getElementById('boss-player-attack-dmg');
+        if (el) el.textContent = this._bossPlayerAttackDamage;
+    },
+
+    confirmBossPlayerAttack() {
+        const popup = document.getElementById('boss-player-attack-popup');
+        if (popup) popup.style.display = 'none';
+        const target = this._bossPlayerAttackTarget;
+        const damage = this._bossPlayerAttackDamage || 1;
+        if (!target) return;
+        const prev = this.hpState[target] ?? 0;
+        if (prev <= 0) return;
+        const ch = CHARACTERS[target];
+        const surviving = prev - damage > 0;
+        if (surviving && ch?.hurtPlusSound) {
+            const a = new Audio(ch.hurtPlusSound);
+            a.volume = 0.85;
+            a.play().catch(() => {});
+        }
+        this.adjustHp(target, -damage, surviving);
+    },
+
+    closeBossPlayerAttackPopup() {
+        const popup = document.getElementById('boss-player-attack-popup');
+        if (popup) popup.style.display = 'none';
     },
 
     _pendingCannonHitAtk: null,
@@ -4411,7 +4643,53 @@ const App = {
         audio.play().catch(e => console.warn(e.message));
     },
 
-    adjustBossHp(enemyId, delta, playSounds = true) {
+    flipBossCard(enemyId) {
+        const card = document.getElementById(`flip-card-${enemyId}`);
+        if (!card) return;
+        const isFlipped = card.classList.toggle('flipped');
+        if (isFlipped) {
+            const enemy = this.currentStage?.bossEnemies?.find(e => e.id === enemyId);
+            if (enemy?.discoverySound) this.playSfx(enemy.discoverySound);
+        }
+    },
+
+    // Azione MIRA giocatori — mostra popup colpo su Sniper Wolf
+    showMiraAttackPopup() {
+        const popup = document.getElementById('mira-attack-popup');
+        if (popup) popup.style.display = 'flex';
+    },
+
+    resolveMiraAttack(hit) {
+        const popup = document.getElementById('mira-attack-popup');
+        if (popup) popup.style.display = 'none';
+        if (!hit) return;
+
+        const wolf = this.currentStage?.bossEnemies?.find(e => e.id === 'wolf');
+
+        // Sparo
+        this.playSfx('audio/sfx/cecchino-sparo.wav', undefined, 0.4);
+
+        // Dopo 250ms: verifica HP e suona ferito o morte
+        setTimeout(() => {
+            const prevHp = this.bossHpState?.['wolf'] ?? 0;
+            this.adjustBossHp('wolf', -2, false);
+            const newHp = this.bossHpState?.['wolf'] ?? 0;
+
+            if (prevHp > 0 && newHp <= 0) {
+                // Colpo letale → morte
+                if (wolf?.koSound) this.playSfx(wolf.koSound);
+                if (wolf) setTimeout(() => this._triggerBossKo({ ...wolf, koSound: null }), 1200);
+            } else if (prevHp > 0) {
+                // Non letale → ferito casuale
+                const hurtSounds = wolf?.hurtSounds || [];
+                if (hurtSounds.length) {
+                    this.playSfx(hurtSounds[Math.floor(Math.random() * hurtSounds.length)]);
+                }
+            }
+        }, 250);
+    },
+
+    adjustBossHp(enemyId, delta, playSounds = true, category = null) {
         if (!this.bossHpState || this.bossHpState[enemyId] === undefined) return;
         const prev = this.bossHpState[enemyId];
         this.bossHpState[enemyId] = Math.max(0, this.bossHpState[enemyId] + delta);
@@ -4452,11 +4730,19 @@ const App = {
                     } else {
                         const dmg = -delta;
                         const exactEntry = (enemy.damageSounds || []).find(ds => ds.damage === dmg);
-                        const soundToPlay = exactEntry
-                            ? (exactEntry.sounds
+                        let soundToPlay;
+                        if (exactEntry) {
+                            soundToPlay = exactEntry.sounds
                                 ? exactEntry.sounds[Math.floor(Math.random() * exactEntry.sounds.length)]
-                                : exactEntry.sound)
-                            : enemy.hitSound;
+                                : exactEntry.sound;
+                        } else if (enemy.hurtSoundsByCategory) {
+                            const pool = enemy.hurtSoundsByCategory[category] || enemy.hurtSoundsByCategory.default || [];
+                            soundToPlay = pool[Math.floor(Math.random() * pool.length)];
+                        } else {
+                            soundToPlay = enemy.hurtSounds?.length
+                                ? enemy.hurtSounds[Math.floor(Math.random() * enemy.hurtSounds.length)]
+                                : enemy.hitSound;
+                        }
                         if (soundToPlay) this.playSfx(soundToPlay);
                     }
                 }
@@ -4893,7 +5179,7 @@ const App = {
                     this.adjustBossHp(enemyId, -amount, false);
                     this._playElicotteroHitSounds(amount, isLethal, isLethal ? enemy : null);
                 } else {
-                    this.adjustBossHp(enemyId, -amount);
+                    this.adjustBossHp(enemyId, -amount, true, action?.category ?? null);
                 }
             }
             // Reazione Ocelot quando Baker viene colpito con arma a distanza
@@ -5282,7 +5568,7 @@ const App = {
         const unlocked = this.session?.unlockedEquipment || [];
         const players  = this._pendingSelectedPlayers || [];
         const hasOwnerItems = players.some(p =>
-            Object.values(EQUIPMENT).some(eq => eq.owner === p)
+            Object.values(EQUIPMENT).some(eq => eq.owner && [].concat(eq.owner).includes(p))
         );
         if (unlocked.length > 0 || hasOwnerItems) {
             this._showEquipmentPopup();
@@ -5341,12 +5627,12 @@ const App = {
                 const isInactive = i > 0 && !slots[i - 1];
                 const usedIds    = this._getAllUsedEquipment(p, i);
                 // Include anche gli item con owner === p non ancora nell'unlocked pool
-                const ownerItems = Object.keys(EQUIPMENT).filter(id => EQUIPMENT[id].owner === p && !unlocked.includes(id));
+                const ownerItems = Object.keys(EQUIPMENT).filter(id => EQUIPMENT[id].owner && [].concat(EQUIPMENT[id].owner).includes(p) && !unlocked.includes(id));
                 const pool       = [...unlocked, ...ownerItems];
                 const noWeapons  = !!(CHARACTERS[p]?.noWeapons);
                 const baseEquip  = CHARACTERS[p]?.baseEquipment || [];
                 const available  = pool
-                    .filter(id => !usedIds.has(id) && (!EQUIPMENT[id].owner || EQUIPMENT[id].owner === p) && !EQUIPMENT[id].stageOnly && !(noWeapons && EQUIPMENT[id].type === 'weapon'))
+                    .filter(id => !usedIds.has(id) && (!EQUIPMENT[id].owner || [].concat(EQUIPMENT[id].owner).includes(p)) && !EQUIPMENT[id].stageOnly && !(noWeapons && EQUIPMENT[id].type === 'weapon'))
                     .sort((a, b) => {
                         const ai = baseEquip.indexOf(a), bi = baseEquip.indexOf(b);
                         if (ai !== -1 && bi !== -1) return ai - bi;

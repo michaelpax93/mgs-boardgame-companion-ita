@@ -432,6 +432,48 @@ const EQUIPMENT = {
         },
     },
 
+    "018": {
+        name: "FUCILE DI PRECISIONE",
+        type: "weapon",
+        itemType: "arma a distanza",
+        itemSubtype: "fucile",
+        charges: 6,
+        action: {
+            name: "SPARA",
+            cost: 2,
+            sound: "audio/sfx/cecchino-sparo.wav",
+            desc: "Scarta 1 proiettile. Attacca 1 bersaglio in Linea di Vista. RUMOROSA: Colloca il tuo segnalino ! sotto la tua miniatura.",
+            dice: [{ color: "white", count: 3 }],
+            alertImmediate: true,
+            attack: true,
+            attackType: "ranged",
+            targets: 1,
+            usesCharge: true,
+        },
+    },
+
+    "020": {
+        name: "FAZZOLETTO",
+        type: "item",
+        itemType: "oggetto",
+        itemSubtype: "indumento",
+        owner: "Otacon",
+        passive: {
+            desc: '"Questo fazzoletto apparteneva a mia madre" — Sniper Wolf. 1 Volta per round, mentre hackeri, puoi modificare di +/−1 il risultato di 1 singolo dado nero.',
+        },
+    },
+
+    "021": {
+        name: "GIUBBOTTO ANTIPROIETTILE",
+        type: "item",
+        itemType: "oggetto",
+        itemSubtype: "indumento",
+        owner: ["Snake", "Meryl"],
+        passive: {
+            desc: "+1 difesa.",
+        },
+    },
+
     "016": {
         name: "CORDA",
         type: "item",

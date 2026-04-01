@@ -5,14 +5,33 @@
  *
  * players:           array dei personaggi attivi nello stage
  * variableActions:   override delle azioni variabili per personaggio
- *                    { "NomePersonaggio": ["id-azione", ...] }
+ *                    { "NomePersonaggio": ["id-azione" | actionObject, ...] }
  *                    se assente si usano le defaultVariableActions del personaggio
+ *                    gli elementi possono essere ID (stringa) o oggetti azione inline
+ *
+ * otaconHybrid:      true → modalità ibrida Boss/Sneaking in base a Otacon
+ *   orderCards:             { nGiocatori: numCarte } senza Otacon
+ *   orderCardsWithOtacon:   numCarte con Otacon (carte blu = 10)
  *
  * MUSICA DURANTE INTRO:
  *   musicDuringIntro: true  → musica parte durante il video intro
  *   musicIntroDelay:  ms dall'inizio del video (es. 65000 = al secondo 65)
  *   musicIntroVolume: volume 0–100 durante l'intro
  */
+
+// Azione MIRA — usata da Snake, Meryl e Gray Fox nello stage 11 (Sniper Wolf)
+const _MIRA_SNIPER_ACTION = {
+    id: "mira-sniper",
+    name: "MIRA",
+    weaponName: "FUCILE DI PRECISIONE — arma a distanza / fucile",
+    _hotspotRef: "trascinamento",
+    cost: 1,
+    dice: [{ color: "black", count: 2 }],
+    sound: "audio/sfx/mirino.wav",
+    miraAttackPopup: true,
+    desc: "Se il tuo mirino non si trova già sulla mappa, collocalo in una casella adiacente. Tira 2 dadi neri e muovi il tuo mirino, in una singola direzione, di un numero di caselle pari al risultato di 1 dei dadi. Poi devi fare lo stesso con l'altro risultato. Se il tuo mirino termina il movimento nella stessa casella di Sniper Wolf, infligge 2 danni.",
+    passiveDesc: "Se subisci danni o se effettui un'azione diversa da Mira o Concentrazione, rimuovi dalla mappa il tuo mirino.",
+};
 
 const STAGES = [
     {
@@ -243,9 +262,9 @@ const STAGES = [
         musicLabels: ["Deposito nucleare - L1", "Deposito nucleare - B1", "Deposito nucleare - B2"],
         elevator: "audio/sfx/elevetor.mp3",
         musicDuringIntro: true,
-        musicIntroDelay: 61730,
+        musicIntroDelay: 66533,
         musicIntroVolume: 20,
-        musicIntroStartOffset: 100.29,
+        musicIntroStartOffset: 106.02,
         rewards: {
             always: ["009"],
             conditional: [
@@ -493,17 +512,66 @@ mantisShakes: [
         name: "SNIPER WOLF",
         type: "BOSS BATTLE",
         isBoss: true,
-        hybridSneaking: { minPlayers: 2 },
+        otaconHybrid: true,
         players: ["Snake", "Meryl", "Otacon", "Gray Fox"],
         description: "Duello con Sniper Wolf",
-        intro: "",
-        outro: "",
+        intro: "video/stage_11_intro.mp4",
+        outro: "video/stage_11_outro.mp4",
         musicIds: ["duel"],
         musicLabels: ["Boss"],
+        otaconMusicId: "intruder-3",
         musicDuringIntro: false,
         musicIntroDelay: 0,
         musicIntroVolume: 20,
         gameOverSounds: null,
+        // Con Otacon: 10 carte blu, 3 guardie, 3 radio
+        orderCardsWithOtacon: 10,
+        enemies: [3],
+        radioEnemies: [3],
+        events: [
+            {
+                id: "W",
+                label: "TESSERA WOLF RAGGIUNTA",
+                requiresPlayer: "Otacon",
+                otaconOutro: true,
+            },
+        ],
+        // Azioni variabili: Snake/Meryl/Gray Fox usano MIRA, Otacon usa le sue default
+        variableActions: {
+            "Snake":    [_MIRA_SNIPER_ACTION],
+            "Meryl":    [_MIRA_SNIPER_ACTION],
+            "Gray Fox": [_MIRA_SNIPER_ACTION],
+        },
+        bossEnemies: [
+            {
+                id: "wolf",
+                name: "SNIPER WOLF",
+                hp: 10,
+                hpByPlayerCount: { 1: 12, 2: 24, 3: 36 },
+                attacks: [
+                    { name: "MIRA",    sound: "audio/sfx/mirino.wav"                       },
+                    { name: "ATTACCA", sound: "audio/sfx/cecchino-sparo.wav",  volume: 0.4 },
+                ],
+                hurtSounds: [
+                    "audio/sfx/wolf/ferito1.wav",
+                    "audio/sfx/wolf/ferito2.wav",
+                ],
+                koSound: "audio/sfx/wolf/morte.wav",
+                discoverySound: "audio/sfx/wolf/wolf-scoperta.wav",
+                image: "img/wolf.png",
+                flipCard: true,
+            },
+        ],
+        rewards: {
+            conditional: [
+                {
+                    type: "event",
+                    eventId: "W",
+                    equipmentIds: ["020"],        // Otacon raggiunge Wolf: fazzoletto
+                    elseEquipmentIds: ["018"],    // Wolf sconfitta in combattimento: fucile di precisione
+                },
+            ],
+        },
     },
     {
         id: 12,
@@ -512,14 +580,40 @@ mantisShakes: [
         isBoss: true,
         players: ["Snake", "Meryl", "Otacon", "Gray Fox"],
         description: "Scontro con Vulcan Raven",
-        intro: "",
-        outro: "",
+        intro: "video/stage_12_intro.mp4",
+        outro: "video/stage_12_outro.mp4",
         musicIds: ["duel"],
         musicLabels: ["Boss"],
+        variableActions: { "Snake": [], "Meryl": [], "Otacon": null, "Gray Fox": [] },
         musicDuringIntro: false,
         musicIntroDelay: 0,
         musicIntroVolume: 20,
-        gameOverSounds: null,
+        gameOverSounds: "18",
+        bossEnemies: [
+            {
+                id: "raven",
+                name: "VULCAN RAVEN",
+                hpByPlayerCount: { 1: 14, 2: 28, 3: 38, 4: 44 },
+                playerTargetAttack: { attackSound: "audio/sfx/raven/attacco.mp3" },
+                movementHighHP: {
+                    leadSound: "audio/sfx/raven/camminata.mp3",
+                    sounds: ["audio/sfx/raven/movimento-1.wav", "audio/sfx/raven/movimento-2.wav", "audio/sfx/raven/movimento-3.wav"],
+                },
+                movementLowHP: {
+                    leadSound: "audio/sfx/raven/corsa.wav",
+                    sounds: ["audio/sfx/raven/movimento-4.wav", "audio/sfx/raven/movimento-5.wav", "audio/sfx/raven/movimento-6.wav"],
+                },
+                hurtSoundsByCategory: {
+                    default: ["audio/sfx/raven/ferito-1.wav", "audio/sfx/raven/ferito-2.wav", "audio/sfx/raven/ferito-3.wav"],
+                    missile:   ["audio/sfx/raven/ferito+.wav"],
+                    explosive: ["audio/sfx/raven/ferito+.wav"],
+                },
+                koSound: "audio/sfx/raven/morte.wav",
+            },
+        ],
+        rewards: {
+            always: ["021"],
+        },
     },
     {
         id: 13,

@@ -261,6 +261,35 @@
             </div>
         </div>
 
+        <!-- Boss → Player Attack Popup (Vulcan Raven) -->
+        <div id="boss-player-attack-popup" class="enemy-phase-popup-overlay" style="display:none">
+            <div class="enemy-phase-popup-box">
+                <div class="enemy-phase-popup-text">Chi viene colpito?</div>
+                <div id="boss-player-attack-list" style="display:flex;flex-direction:column;gap:0.3rem;margin-top:0.4rem"></div>
+                <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.6rem">
+                    <span style="font-size:0.75rem;color:var(--codec-green)">DANNI:</span>
+                    <button class="btn-codec" onclick="App.bossPlayerAttackAdjDmg(-1)"><span class="btn-inner">−</span></button>
+                    <span id="boss-player-attack-dmg" style="font-size:1.1rem;min-width:1.5rem;text-align:center">1</span>
+                    <button class="btn-codec" onclick="App.bossPlayerAttackAdjDmg(1)"><span class="btn-inner">+</span></button>
+                </div>
+                <div style="display:flex;gap:0.5rem;margin-top:0.6rem">
+                    <button class="btn-codec" onclick="App.confirmBossPlayerAttack()"><span class="btn-inner">CONFERMA</span></button>
+                    <button class="btn-codec" onclick="App.closeBossPlayerAttackPopup()"><span class="btn-inner">ANNULLA</span></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mira Sniper Wolf Popup -->
+        <div id="mira-attack-popup" class="enemy-phase-popup-overlay" style="display:none">
+            <div class="enemy-phase-popup-box">
+                <div class="enemy-phase-popup-text">Sniper Wolf è stata colpita?</div>
+                <div style="display:flex;gap:0.5rem;margin-top:0.6rem">
+                    <button class="btn-codec" onclick="App.resolveMiraAttack(true)"><span class="btn-inner">SÌ</span></button>
+                    <button class="btn-codec" onclick="App.resolveMiraAttack(false)"><span class="btn-inner">NO</span></button>
+                </div>
+            </div>
+        </div>
+
         <!-- Enemy Phase Popup -->
         <div id="enemy-phase-popup" class="enemy-phase-popup-overlay" style="display:none">
             <div class="enemy-phase-popup-box">
