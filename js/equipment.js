@@ -173,7 +173,7 @@ const EQUIPMENT = {
         action: {
             name: "LANCIA",
             cost: 1,
-            desc: "Se non ce ne sono sulla mappa, colloca 1 missile in una casella adiacente vuota e scarta 1 proiettile. Poi tira 2 dadi neri e muovi il missile, in una singola direzione, di un numero di caselle pari al risultato di 1 dei dadi. Poi puoi fare lo stesso con l'altro risultato. Se il missile sta per muoversi contro un ostacolo o si trova nella stessa casella di una miniatura, attacca tutte le miniature entro 1 casella e in Linea di Vista. Poi rimuovi il missile. Se si muove fuori dalla mappa, rimuovi il missile. RUMOROSA: Colloca il tuo segnalino ! sotto la tua miniatura.",
+            desc: "Se non ce ne sono sulla mappa, colloca 1 missile in una casella adiacente vuota e scarta 1 munizione. Poi tira 2 dadi neri e muovi il missile, in una singola direzione, di un numero di caselle pari al risultato di 1 dei dadi. Poi puoi fare lo stesso con l'altro risultato. Se il missile sta per muoversi contro un ostacolo o si trova nella stessa casella di una miniatura, attacca tutte le miniature entro 1 casella e in Linea di Vista. Poi rimuovi il missile. Se si muove fuori dalla mappa, rimuovi il missile. RUMOROSA: Colloca il tuo segnalino ! sotto la tua miniatura.",
             dice: [{ color: "white", count: 3 }],
             alertImmediate: true,
             attack: true,
@@ -200,6 +200,23 @@ const EQUIPMENT = {
             attackType: "ranged",
             targets: 1,
             category: "missile",
+        },
+    },
+
+    "030": {
+        name: "MIMETICA OTTICA",
+        type: "item",
+        itemType: "tecnologia",
+        itemSubtype: "mimetica",
+        charges: 2,
+        isGear: true,
+        action: {
+            name: "ATTIVA MIMETIZZAZIONE",
+            cost: 1,
+            usesCharge: true,
+            oncePerTurn: true,
+            desc: "Scarta 1 ingranaggio. Fino alla fine del tuo turno, non collocare il tuo ! quando ti trovi in Linea di Vista di una guardia o di una telecamera. Le guardie non attaccano quando le salti.",
+            sound: "audio/sfx/mimetica.wav",
         },
     },
 
@@ -254,6 +271,20 @@ const EQUIPMENT = {
             usesCharge: true,
             category: "rifle",
             sound: "audio/sfx/attacco-guardia.wav",
+        },
+    },
+
+    "022": {
+        name: "SCHEDA D'ACCESSO DI LIVELLO 4",
+        type: "item",
+        itemType: "oggetto",
+        itemSubtype: "scheda d'accesso",
+        consumable: true,
+        action: {
+            name: "USA",
+            cost: 1,
+            desc: "Sblocca 1 porta di livello 4 o inferiore nella tua casella. Poi scarta questa carta.",
+            sound: "audio/sfx/porta.wav",
         },
     },
 
@@ -421,7 +452,7 @@ const EQUIPMENT = {
         action: {
             name: "LANCIA",
             cost: 1,
-            desc: "Scarta 1 proiettile e colloca 1 missile in una casella adiacente vuota. Poi muovi il missile in linea retta, allontanandolo dalla tua miniatura finché non sta per muoversi contro un ostacolo o non occupa la stessa casella di una miniatura. Quando succede, attacca tutte le miniature entro 1 casella e in Linea di Vista. Poi rimuovi il missile. Se si muove fuori dalla mappa, rimuovi il missile. RUMOROSA: Colloca il tuo segnalino ! sotto la tua miniatura.",
+            desc: "Scarta 1 munizione e colloca 1 missile in una casella adiacente vuota. Poi muovi il missile in linea retta, allontanandolo dalla tua miniatura finché non sta per muoversi contro un ostacolo o non occupa la stessa casella di una miniatura. Quando succede, attacca tutte le miniature entro 1 casella e in Linea di Vista. Poi rimuovi il missile. Se si muove fuori dalla mappa, rimuovi il missile. RUMOROSA: Colloca il tuo segnalino ! sotto la tua miniatura.",
             dice: [{ color: "white", count: 3 }],
             alertImmediate: true,
             attack: true,
@@ -442,7 +473,7 @@ const EQUIPMENT = {
             name: "SPARA",
             cost: 2,
             sound: "audio/sfx/cecchino-sparo.wav",
-            desc: "Scarta 1 proiettile. Attacca 1 bersaglio in Linea di Vista. RUMOROSA: Colloca il tuo segnalino ! sotto la tua miniatura.",
+            desc: "Scarta 1 munizione. Attacca 1 bersaglio in Linea di Vista. RUMOROSA: Colloca il tuo segnalino ! sotto la tua miniatura.",
             dice: [{ color: "white", count: 3 }],
             alertImmediate: true,
             attack: true,
@@ -458,6 +489,7 @@ const EQUIPMENT = {
         itemType: "oggetto",
         itemSubtype: "indumento",
         owner: "Otacon",
+        rewardOnly: true,
         passive: {
             desc: '"Questo fazzoletto apparteneva a mia madre" — Sniper Wolf. 1 Volta per round, mentre hackeri, puoi modificare di +/−1 il risultato di 1 singolo dado nero.',
         },
@@ -469,6 +501,7 @@ const EQUIPMENT = {
         itemType: "oggetto",
         itemSubtype: "indumento",
         owner: ["Snake", "Meryl"],
+        rewardOnly: true,
         passive: {
             desc: "+1 difesa.",
         },
@@ -485,6 +518,18 @@ const EQUIPMENT = {
             cost: 1,
             desc: "Colloca 1 corda da questa carta in una guardia KO adiacente. Questa guardia KO ignora gli effetti Risveglio delle Guardie sulle carte ordini delle guardie. Se una guardia si muove su una corda, scarta immediatamente la corda.",
             usesCharge: true,
+        },
+    },
+
+    "023": {
+        name: "BANDANA",
+        type: "item",
+        itemType: "indumento",
+        itemSubtype: "accessorio",
+        owner: "Snake",
+        rewardOnly: true,
+        passive: {
+            desc: "Quando Snake usa un'arma, non scarta le munizioni.",
         },
     },
 

@@ -2191,7 +2191,7 @@ body, body * {
 
 /* In save mode: max 5 blocchi visibili, poi scroll */
 .card-blocks--save {
-    max-height: calc(5 * 52px + 4 * 0.4rem);
+    max-height: calc(5 * 72px + 4 * 0.4rem);
     flex: 0 0 auto;
 }
 
@@ -4154,9 +4154,9 @@ body, body * {
 #card-screen.active {
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    min-height: 100vh;
     position: relative;
-    overflow: hidden;
+    overflow-y: auto;
 }
 
 /* ============================================================
@@ -4450,6 +4450,28 @@ body, body * {
     color: var(--text-dim);
     letter-spacing: 0.05em;
     text-align: center;
+}
+
+.equipment-popup-notice {
+    font-family: var(--font-ui);
+    font-size: 0.72rem;
+    color: var(--codec-red);
+    letter-spacing: 0.05em;
+    text-align: center;
+    margin-top: 4px;
+}
+
+@keyframes eq-notice-shake {
+    0%   { transform: translateX(0); }
+    20%  { transform: translateX(-6px); }
+    40%  { transform: translateX(6px); }
+    60%  { transform: translateX(-4px); }
+    80%  { transform: translateX(4px); }
+    100% { transform: translateX(0); }
+}
+
+.equipment-popup-notice-shake {
+    animation: eq-notice-shake 0.35s ease;
 }
 
 .equipment-popup-content {
@@ -4882,4 +4904,153 @@ body, body * {
 .ketchup-badge-disabled {
     opacity: 0.3;
     cursor: default;
+}
+
+/* ============================================
+   SCORE SCREEN
+   ============================================ */
+#score-screen {
+    background: rgba(0, 0, 0, 0.88);
+    padding: 0;
+    max-width: 100%;
+}
+
+#score-screen.active {
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    gap: 1rem;
+}
+
+/* Box popup: contiene video + stats, con score.png come sfondo */
+.score-container {
+    position: relative;
+    overflow: hidden;
+    width: 92vw;
+    max-width: 520px;
+    min-height: 65vh;
+    border: 1px solid var(--codec-green);
+    background: #000 url('../img/score.png') center/cover no-repeat;
+    box-shadow: 0 0 40px rgba(58, 255, 126, 0.12);
+    font-family: var(--font-mono);
+    text-align: center;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+}
+
+/* Video assoluto dentro la box, copre tutto */
+#score-video-player {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 2;
+    transition: opacity 0.8s ease;
+}
+
+/* Contenuto stats: in flusso normale, dà altezza alla box */
+#score-static {
+    position: relative;
+    z-index: 1;
+    padding: 1.8rem 2rem;
+    font-weight: bold;
+}
+
+.score-title-box {
+    border: 2px solid var(--codec-green);
+    padding: 5px 36px;
+    display: inline-block;
+    font-size: 1.3rem;
+    letter-spacing: 8px;
+    margin-bottom: 2rem;
+    text-shadow: 0 0 10px var(--codec-green);
+    box-shadow: 0 0 8px rgba(58, 255, 126, 0.3);
+}
+
+.score-stats {
+    display: inline-block;
+    text-align: left;
+}
+
+.score-stat {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    margin-bottom: 0.5rem;
+    font-size: 1.05rem;
+    letter-spacing: 2px;
+}
+
+.score-stat-label {
+    color: #528c7b;
+    text-align: right;
+    min-width: 160px;
+}
+
+.score-stat-sep {
+    color: #528c7b;
+}
+
+.score-stat-value {
+    color: #8cb5b5;
+    min-width: 55px;
+    text-align: right;
+    font-size: 1.05rem;
+}
+
+.score-stat-unit {
+    color: #528c7b;
+    font-size: 1.05rem;
+    letter-spacing: 2px;
+}
+
+.score-used-items-list {
+    color: #8cb5b5;
+    font-size: 1.05rem;
+    letter-spacing: 2px;
+    text-align: left;
+}
+
+.score-codename-row {
+    margin-top: 2rem;
+    font-size: 1.05rem;
+    letter-spacing: 2px;
+}
+
+.score-codename-label {
+    color: #528c7b;
+}
+
+.score-codename-value {
+    color: #9a4343;
+    font-size: 1.1rem;
+    letter-spacing: 4px;
+    margin-left: 10px;
+    text-transform: uppercase;
+}
+
+.score-special-section {
+    margin-top: 1.4rem;
+}
+
+.score-special-label {
+    color: #528c7b;
+    font-size: 0.95rem;
+    letter-spacing: 3px;
+    margin-bottom: 0.5rem;
+}
+
+.score-special-item {
+    color: #42638a;
+    font-size: 1rem;
+    letter-spacing: 3px;
+}
+
+.score-back-btn {
+    display: flex;
+    justify-content: center;
 }

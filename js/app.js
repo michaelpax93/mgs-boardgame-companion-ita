@@ -64,6 +64,8 @@ const App = {
     selectedCard: 1,
     selectedBlock: null,
     pendingNextStageId: null,
+    _postSaveScreen: null,   // se impostato, dopo il save outro torna a questo screen
+    _enemyDownPendingZone: null,
     cardPhase: 'card',       // 'card' | 'block' (solo save mode)
     focusedBlock: null,      // blockId attualmente in focus (fase blocchi)
     _visibleBlockIds: [],    // lista ordinata dei blockId mostrati (per navigazione tastiera)
@@ -690,10 +692,12 @@ const App = {
         const btnNext = document.getElementById('btn-next-stage');
         if (btnNext) {
             const hasNextStage = !!STAGES.find(s => s.id === stage.id + 1);
-            if (this.newGameMode && hasNextStage) {
+            const isLastStage = !hasNextStage;
+            if (this.newGameMode && (hasNextStage || isLastStage)) {
                 btnNext.style.display = '';
                 btnNext.disabled = true;
                 btnNext.style.opacity = '0.3';
+                btnNext.querySelector('.btn-inner').textContent = isLastStage ? 'SCORE ▶' : 'NEXT ▶';
             } else {
                 btnNext.style.display = 'none';
             }
@@ -920,9 +924,10 @@ const App = {
         const vp = document.getElementById('video-player');
         if (vp && !vp.paused) return;
 
-        // Stage 2: se non ancora salvato per questo stage, mostra Mei Ling prima di avviare la musica
-        if (this.currentStage?.id === 2 && (this.session?.savedForStage ?? 0) < 2) {
-            this._triggerInlineSave(null); // nextStage = null → resta sullo stage 2
+        // Stage 2 e 14: se non ancora salvato per questo stage, mostra Mei Ling prima di avviare la musica
+        const _sid = this.currentStage?.id;
+        if ((_sid === 2 || _sid === 14) && (this.session?.savedForStage ?? 0) < _sid) {
+            this._triggerInlineSave(null); // nextStage = null → resta sullo stage corrente
             return;
         }
 
@@ -1203,9 +1208,10 @@ const App = {
             const prereqMet   = !ev.requiresEvent  || !!this.eventClickedState[ev.requiresEvent];
             const zoneMet     = ev.requiresZone == null || activeZone === ev.requiresZone;
             const playerMet   = !ev.requiresPlayer  || activePlayer === ev.requiresPlayer;
+            const equipMet    = !ev.requiresEquipment || (activePlayer != null && (this.playerEquipment[activePlayer] || []).includes(ev.requiresEquipment));
             const btn = document.getElementById(`btn-event-${ev.id}`);
             if (!btn) return;
-            const enabled = isPlayerTurn && prereqMet && zoneMet && playerMet;
+            const enabled = isPlayerTurn && prereqMet && zoneMet && playerMet && equipMet;
             btn.disabled = !enabled;
             btn.style.opacity = enabled ? '1' : '0.35';
         });
@@ -1313,14 +1319,22 @@ const App = {
     goNextStage() {
         if (!this.currentStage) return;
         const nextStage = STAGES.find(s => s.id === this.currentStage.id + 1);
-        if (!nextStage) return;
+        const destination = nextStage || 'score';
         const effectiveRewards = (this.ketchupUsed && this.currentStage.rewardsKetchup)
             ? this.currentStage.rewardsKetchup
             : this.currentStage.rewards;
-        if (effectiveRewards) {
-            this._showRewardsPopup({ ...this.currentStage, rewards: effectiveRewards }, nextStage);
+        if (destination === 'score') {
+            // Applica rewards silenziosamente, nessun popup
+            if (effectiveRewards && this.session) {
+                const pool = this.session.unlockedEquipment || (this.session.unlockedEquipment = []);
+                (effectiveRewards.always || []).forEach(id => { if (!pool.includes(id)) pool.push(id); });
+                this._persistSession();
+            }
+            this.showScoreScreen();
+        } else if (effectiveRewards) {
+            this._showRewardsPopup({ ...this.currentStage, rewards: effectiveRewards }, destination);
         } else {
-            this.showPlayersPopup(nextStage);
+            this.showPlayersPopup(destination);
         }
     },
 
@@ -1578,9 +1592,10 @@ const App = {
         const nextStage = this._rewardsPendingNextStage;
         this._rewardsPendingNextStage = null;
         this._rewardsConditionalState = {};
+        if (nextStage === 'score') { this.showScoreScreen(); return; }
         if (!nextStage) return;
-        // Stage 1→2: salvataggio speciale dopo intro dello stage 2, non qui
-        if (nextStage.id === 2) {
+        // Stage 1→2 e 13→14: salvataggio speciale dopo intro, non qui
+        if (nextStage.id === 2 || nextStage.id === 14) {
             this.showPlayersPopup(nextStage);
         } else if (this.currentStage?.id === 11 && nextStage.id === 12) {
             // Video interstitial disco2 tra stage 11 e stage 12, poi Mei Ling
@@ -1589,6 +1604,160 @@ const App = {
         } else {
             this._triggerInlineSave(nextStage);
         }
+    },
+
+    // ============================================
+    // SCORE SCREEN (fine campagna)
+    // ============================================
+    _calcCodeName(s) {
+        const rounds      = s.rounds        || 0;
+        const saves       = s.saves         || 0;
+        const continues   = s.continues     || 0;
+        const alerts      = s.alerts        || 0;
+        const kills       = s.kills         || 0;
+        const rations     = s.rations_used  || 0;
+        const bandanaUsed = s.bandana_used  || false;
+        const diff        = s.difficulty    || 'NORMAL';
+
+        const NAMES = {
+            EASY:    ['Hound','Pigeon','Piranha','Pig','Cat','Koala','Chicken','Puma','Komodo Dragon','Mongoose','Spider','Flying Squirrel'],
+            NORMAL:  ['Doberman','Falcon','Shark','Elephant','Deer','Capibara','Mouse','Leopard','Iguana','Hyena','Tarantula','Bat'],
+            HARD:    ['Fox','Hawk','Jaws','Mammoth','Zebra','Sloth','Rabbit','Panther','Alligator','Jackal','Centipede','Flying Fox'],
+            EXTREME: ['Big Boss','Eagle','Orca','Whale','Hippopotamus','Giant Panda','Ostrich','Jaguar','Crocodile','Tasmanian Devil','Scorpion','Night Fox'],
+        };
+        const names = NAMES[diff] || NAMES.NORMAL;
+
+        // Rank 1: tutte le condizioni devono essere soddisfatte
+        if (rounds <= 180 && continues === 0 && alerts <= 2 && kills <= 12 && rations <= 1 && !bandanaUsed) {
+            return names[0];
+        }
+        // Rank 2
+        if (rounds <= 150) return names[1];
+        // Rank 3
+        if (kills >= 25) return names[2];
+
+        // Rank 7 speciale: 2+ tra le condizioni di rank 4, 5, 6 (controllato prima dei singoli)
+        const r4 = rations > 6;
+        const r5 = saves > 8;
+        const r6 = rounds > 210;
+        if ([r4, r5, r6].filter(Boolean).length >= 2) return names[6];
+
+        // Rank 4, 5, 6 singoli
+        if (r4) return names[3];
+        if (r5) return names[4];
+        if (r6) return names[5];
+
+        // Rank 8–12: tabella being found × enemies
+        let rank;
+        if      (alerts <= 2) { rank = kills <= 12 ? 8  : kills <= 18 ? 9  : 10; }
+        else if (alerts <= 4) { rank = kills <= 12 ? 9  : kills <= 18 ? 10 : 11; }
+        else                  { rank = kills <= 12 ? 10 : kills <= 18 ? 11 : 12; }
+        return names[rank - 1];
+    },
+
+    _fmtTime(ms) {
+        const s = Math.floor(ms / 1000);
+        const h = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        const sec = s % 60;
+        return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+    },
+
+    showScoreScreen() {
+        this.stopVideo();
+        this.stopMusic();
+        if (this.ambientLoop) this.ambientLoop.stop();
+        if (this.alertLoop) this.alertLoop.stop();
+        if (this.evasionLoop) this.evasionLoop.stop();
+
+        const s = this.session || {};
+        const rounds   = s.rounds || 0;
+        const playTime = `${String(Math.floor(rounds / 60)).padStart(2,'0')}:${String(rounds % 60).padStart(2,'0')}`;
+        const codeName = this._calcCodeName(s);
+        const diffLabel = s.difficulty || 'NORMAL';
+
+        const stats = [
+            { label: 'GAME LEVEL',  value: diffLabel,           unit: '' },
+            { label: 'PLAY TIME',   value: playTime,             unit: '' },
+            { label: 'SAVE',        value: s.saves    || 0,     unit: 'TIMES' },
+            { label: 'CONTINUE',    value: s.continues|| 0,     unit: 'TIMES' },
+            { label: 'BEING FOUND', value: s.alerts   || 0,     unit: 'TIMES' },
+            { label: 'ENEMIES',     value: s.kills    || 0,     unit: 'KILLED' },
+            { label: 'RATIONS',     value: s.rations_used || 0, unit: 'USED' },
+        ];
+
+        const usedItems = [];
+        if (s.bandana_used)   usedItems.push('BANDANA');
+        if (s.mimetica_used)  usedItems.push('MIMETICA OTTICA');
+
+        document.getElementById('score-stats').innerHTML = stats.map((st, i) =>
+            `<div class="score-stat" id="score-stat-${i}">
+                <span class="score-stat-label">${st.label}</span>
+                <span class="score-stat-sep">/</span>
+                <span class="score-stat-value">${st.value}</span>
+                ${st.unit ? `<span class="score-stat-unit">${st.unit}</span>` : ''}
+            </div>`
+        ).join('') + (usedItems.length ? `
+            <div class="score-stat score-used-items-block">
+                <span class="score-stat-label">USED ITEMS</span>
+                <span class="score-stat-sep">/</span>
+                <span class="score-used-items-list">${usedItems.map(n => `<div>${n}</div>`).join('')}</span>
+            </div>` : '');
+
+        document.getElementById('score-special-section').innerHTML =
+            `<div class="score-special-label">SPECIAL ITEMS</div>
+             <div class="score-special-item">"BANDANA"</div>`;
+
+        document.getElementById('score-codename-row').innerHTML =
+            `<span class="score-codename-label">CODE NAME</span>
+             <span class="score-codename-value">${codeName}</span>`;
+
+        // Nascondi sidebar
+        const sidebar = document.getElementById('player-sidebar');
+        if (sidebar) sidebar.style.display = 'none';
+        const eqSidebar = document.getElementById('equipment-sidebar');
+        if (eqSidebar) eqSidebar.style.display = 'none';
+
+        this.showScreen('score-screen');
+
+        // Avvia video — quando finisce, fade-out rivela l'immagine statica con le stats
+        const vp = document.getElementById('score-video-player');
+        if (vp) {
+            vp.style.opacity = '1';
+            vp.src = 'video/score-video.mp4';
+            vp.play().catch(() => { vp.style.opacity = '0'; });
+            vp.addEventListener('ended', () => {
+                vp.style.opacity = '0';
+            }, { once: true });
+        }
+    },
+
+    promptScoreSave() {
+        const popup = document.getElementById('score-save-popup');
+        if (popup) popup.style.display = 'flex';
+    },
+
+    saveFromScoreScreen() {
+        document.getElementById('score-save-popup').style.display = 'none';
+
+        // Prepara sessione "new game+": stage 1, statistiche azzerate, bandana + difficoltà mantenute
+        const hasBandana = (this.session?.unlockedEquipment || []).includes('023');
+        const prevDifficulty = this.session?.difficulty || 'NORMAL';
+        this.session = this._newSession();
+        this.session.stage = 1;
+        this.session.savedForStage = 1;
+        this.session.difficulty = prevDifficulty;
+        if (hasBandana) this.session.unlockedEquipment = ['023'];
+
+        this._postSaveScreen = 'intro';
+        this.cardReturnScreen = 'main-menu';
+        this.newGameMode = true;
+        this.showSaveScreen(null);
+    },
+
+    skipScoreSave() {
+        document.getElementById('score-save-popup').style.display = 'none';
+        this.startIntroVideo();
     },
 
     // ============================================
@@ -1860,13 +2029,43 @@ const App = {
         this.enemyState = Array.isArray(stage.enemies)
             ? [...stage.enemies]
             : [];
-        this.radioEnemyState = Array.isArray(stage.radioEnemies)
-            ? [...stage.radioEnemies]
-            : [];
+        const re = stage.radioEnemies;
+        if (Array.isArray(re)) {
+            this.radioEnemyState = [...re];
+        } else if (re && typeof re === 'object') {
+            const n = this.stagePlayers.length;
+            const key = Object.keys(re).map(Number).sort((a, b) => b - a).find(k => k <= n) ?? Object.keys(re).map(Number).sort((a, b) => a - b)[0];
+            this.radioEnemyState = [...(re[key] ?? [])];
+        } else {
+            this.radioEnemyState = [];
+        }
     },
 
     updateEnemyCount(zone, delta) {
         if (this.enemyState[zone] === undefined) return;
+        if (delta < 0 && this.enemyState[zone] > 0) {
+            this._enemyDownPendingZone = zone;
+            document.getElementById('enemy-down-popup').style.display = 'flex';
+            return;
+        }
+        this._applyEnemyCount(zone, delta);
+    },
+
+    confirmEnemyDown(isKill) {
+        document.getElementById('enemy-down-popup').style.display = 'none';
+        const zone = this._enemyDownPendingZone;
+        this._enemyDownPendingZone = null;
+        if (zone === null || zone === undefined) return;
+        this._applyEnemyCount(zone, -1);
+        if (isKill) {
+            this.trackStat('kills');
+            this.playSfx('audio/sfx/Soldato ucciso.mp3');
+        } else {
+            this.playSfx('audio/sfx/guardia ko.mp3');
+        }
+    },
+
+    _applyEnemyCount(zone, delta) {
         this.enemyState[zone] = Math.max(0, this.enemyState[zone] + delta);
         const el = document.getElementById(`enemy-count-${zone}`);
         if (el) {
@@ -1924,6 +2123,7 @@ const App = {
                 if (stage?.zoneRestrictions) this._refreshEquipmentPanel(activePlayer);
                 this._updateEventButtonsForTurn();
             }
+            this._startZoneSfx(zoneIndex);
         }
 
         // Non cambiare musica se alert/evasion è attivo (la zona è già aggiornata sopra)
@@ -2062,6 +2262,16 @@ const App = {
                 else if (eq?.consumable)  this.equipmentConsumedState[p][id] = false;
                 else                      this.equipmentConsumedState[p][id] = null;
             });
+            if (this.session) {
+                // Bandana equipaggiata a Snake → segna come usata per il rank
+                if (p === 'Snake' && (this.playerEquipment[p] || []).includes('023')) {
+                    this.session.bandana_used = true;
+                }
+                // Mimetica ottica equipaggiata → segna come usata per lo score
+                if ((this.playerEquipment[p] || []).some(id => EQUIPMENT[id]?.itemSubtype === 'mimetica')) {
+                    this.session.mimetica_used = true;
+                }
+            }
         });
         // Inizializza charges sezioni boss — per giocatore
         this.bossSectionChargeState = {};
@@ -2296,7 +2506,9 @@ const App = {
                 const alreadyInBox   = BOX_IDS.includes(id) && !!this.boxState[playerName];
                 const notExhausted   = a.requiresExhausted && remaining > 0;
                 const onceDone       = a.oncePerTurn && usedThisTurn.has(id);
-                return (eq.consumable && isExhausted) || (a.usesCharge && isExhausted) || noCharge || noTokens || flagBlocked || zoneBlocked || alreadyInBox || notExhausted || onceDone;
+                const maxHp          = CHARACTERS[playerName]?.hp || 4;
+                const atMaxHp        = a.heal && ((this.hpState?.[playerName] ?? maxHp) >= maxHp);
+                return (eq.consumable && isExhausted) || (a.usesCharge && isExhausted) || noCharge || noTokens || flagBlocked || zoneBlocked || alreadyInBox || notExhausted || onceDone || atMaxHp;
             });
             const allDisabled = disabledList.every(Boolean);
             const btnsHtml = actionList.map((a, ai) => {
@@ -2350,7 +2562,9 @@ const App = {
             .map(id => {
                 const eq = EQUIPMENT[id];
                 const remaining = typeof consumed[id] === 'number' ? consumed[id] : (eq.charges ?? 0);
+                const tooltip = eq.passive?.desc ? eq.passive.desc.replace(/<br\s*\/?>/gi, ' ') : '';
                 return `<button class="eq-charge-sidebar-btn" ${remaining <= 0 ? 'disabled' : ''}
+                    ${tooltip ? `title="${tooltip}"` : ''}
                     onclick="App.spendEquipCharge('${playerName}','${id}')">
                     ⚙ ${remaining}
                 </button>`;
@@ -2454,8 +2668,14 @@ const App = {
             const current = typeof consumed[equipId] === 'number' ? consumed[equipId] : 0;
             consumed[equipId] = Math.min(eq.charges, current + a.grantsCharge);
         } else if (a.usesCharge && eq.charges != null && !missileAlreadyActive) {
-            const current = typeof consumed[equipId] === 'number' ? consumed[equipId] : eq.charges;
-            consumed[equipId] = Math.max(0, current - 1);
+            const bandanaActive = playerName === 'Snake'
+                && (this.equipmentConsumedState['Snake']?.['023'] !== true)
+                && Object.keys(this.equipmentConsumedState['Snake'] || {}).includes('023')
+                && (eq.itemType === 'arma a distanza' || eq.itemType === 'arma da mischia');
+            if (!bandanaActive) {
+                const current = typeof consumed[equipId] === 'number' ? consumed[equipId] : eq.charges;
+                consumed[equipId] = Math.max(0, current - 1);
+            }
         } else if (eq.consumable) {
             consumed[equipId] = true;
         }
@@ -2472,7 +2692,10 @@ const App = {
         }
 
         // Cura
-        if (a.heal) this.adjustHp(playerName, a.heal, false, true);
+        if (a.heal) {
+            this.adjustHp(playerName, a.heal, false, true);
+            this.trackStat('rations_used');
+        }
 
         // Ripristino segnalini concentrazione
         if (a.restoreConcentration && this.concentrationState[playerName]) {
@@ -3263,7 +3486,7 @@ const App = {
                 const spendBoss = (typeof a.cost === 'number' && a.cost > 0)
                     ? `App.spendTokens(${a.cost},'${playerName}');` : '';
                 const circleCls2 = ['plancia-circle-btn'].filter(Boolean).join(' ');
-                const costLabel2 = a.cost !== undefined ? String(a.cost) : '';
+                const costLabel2 = a.costLabel ?? (a.cost !== undefined ? String(a.cost) : '');
                 const diceHtml2  = this._buildDiceHtml(a.dice);
                 const enc2 = this._enc(a);
                 let chargesDotsHtml = '';
@@ -3301,7 +3524,7 @@ const App = {
                 ? `App._trackNoise('${playerName}');`
                 : '';
             const attackCall = a.attack
-                ? `App.showAttackResultPopup('${playerName}','${a.id}');`
+                ? `App.showAttackResultPopup('${playerName}',null,JSON.parse(decodeURIComponent('${this._enc(a)}')));`
                 : '';
             const miraAttackCall = a.miraAttackPopup
                 ? `App.showMiraAttackPopup();`
@@ -3499,16 +3722,6 @@ const App = {
             this._clearEquipmentSidebar();
         } else {
             this._clearEquipmentSidebar();
-            // Auto game over se si arriva alla fase nemici al round orderCards+7
-            const _oc = this._resolveOrderCards(stage);
-            if (!isBoss && _oc != null) {
-                const autoGoRound = _oc + 7;
-                if (this.turnRound >= autoGoRound) {
-                    setTimeout(() => this.triggerGameOver(), 0);
-                    return;
-                }
-            }
-
             // Modalità ibrida Sniper Wolf con Otacon
             if (stage?.otaconHybrid && this.stagePlayers.includes('Otacon')) {
                 const subPhase = this.otaconEnemySubPhase || 'select';
@@ -3656,6 +3869,7 @@ const App = {
         this.soldierCameraCard = null;
         this.soldierGuardAction = null;
         this._guardsAttackedThisTurn = false;
+        this._inCameraSight = false;
         // Init stato selezione nemici per modalità ibrida Sniper Wolf / Otacon
         if (this.currentStage?.otaconHybrid && this.stagePlayers.includes('Otacon')) {
             this.otaconEnemySubPhase = 'select';
@@ -3843,12 +4057,10 @@ const App = {
         }
 
         const hasGameOver = !!(stage?.gameOverSounds || CONFIG.gameOverSounds);
-        const orderCards  = this._resolveOrderCards(stage);
-        const goLocked    = orderCards != null && this.turnRound <= orderCards;
         const gameOverBtn = hasGameOver
             ? `<div class="soldier-game-over-col">
-                <button class="btn-game-over btn-video${goLocked ? ' go-locked' : ''}" id="btn-game-over"
-                    ${goLocked ? 'disabled' : 'onclick="App.triggerGameOver()"'}>GAME<br>OVER</button>
+                <button class="btn-game-over btn-video" id="btn-game-over"
+                    onclick="App.showGameOverConfirm()">GAME<br>OVER</button>
                </div>`
             : '';
 
@@ -3877,30 +4089,30 @@ const App = {
     },
 
     selectGuardCard(id) {
-        if (this.soldierGuardCard === id) return;
+        const changed = this.soldierGuardCard !== id;
         this.soldierGuardCard = id;
         const c = this.GUARD_CARDS.find(c => c.id === id);
         if (c?.sound) this._playActionSound(c.sound);
         if (id === 'radio') this._radioRestoreGuards();
-        this._renderSoldierPhases();
+        if (changed) this._renderSoldierPhases();
     },
 
     selectCameraCard(id) {
-        if (this.soldierCameraCard === id) return;
+        const changed = this.soldierCameraCard !== id;
         this.soldierCameraCard = id;
         const c = this.CAMERA_CARDS.find(c => c.id === id);
         if (c?.sound) this._playActionSound(c.sound);
         if (id === 'cambiano') this._inCameraSight = false;
-        this._renderSoldierPhases();
+        if (changed) this._renderSoldierPhases();
     },
 
     setGuardAction(action) {
-        if (this.soldierGuardAction === action) return;
+        const changed = this.soldierGuardAction !== action;
         this.soldierGuardAction = action;
         const a = this.GUARD_ACTIONS.find(a => a.id === action);
         if (a?.sound) this._playActionSound(a.sound);
         if (action === 'attacca') this._guardsAttackedThisTurn = true;
-        this._renderSoldierPhases();
+        if (changed) this._renderSoldierPhases();
     },
 
     // ============================================
@@ -4193,13 +4405,14 @@ const App = {
                 const noTokens = typeof a.cost === 'number' && a.cost > available;
                 const disabled = noCharge || noTokens;
                 const diceHtml = this._buildDiceHtml(a.dice);
+                const displayCost = a.costLabel ?? a.cost;
                 return `<button class="panel-btn eq-action-btn"
                     ${disabled ? 'disabled' : ''}
                     onmouseenter="App.showTooltip(event,'${this._enc(a)}')"
                     onmouseleave="App.hideActionTooltip()"
                     onclick="App.useBossSectionAction('${sec.id}',${ai},'${pName}')">
                     <span class="panel-btn-name">${a.name}</span>
-                    <span class="panel-btn-cost">${a.cost != null ? a.cost : ''}${a.cost != null ? '<span class="cost-token">●</span>' : ''}</span>
+                    <span class="panel-btn-cost">${displayCost != null ? displayCost : ''}${displayCost != null ? '<span class="cost-token">●</span>' : ''}</span>
                 </button>${diceHtml}`;
             }).join('');
             const allDisabled = sec.actions.every((a) => {
@@ -4299,7 +4512,46 @@ const App = {
             needsRender = true;
         }
         if (needsRender) this._renderTurnSection();
-        if (a.attack) this.showAttackResultPopup(null, null, a);
+        if (a.attack) {
+            if (a.extraTokenAttack) {
+                this._showExtraTokenAttackPopup(pName, a);
+            } else {
+                this.showAttackResultPopup(null, null, a);
+            }
+        }
+    },
+
+    _showExtraTokenAttackPopup(playerName, baseAction) {
+        const popup = document.getElementById('token-attack-popup');
+        const btnsEl = document.getElementById('token-attack-btns');
+        if (!popup || !btnsEl) { this.showAttackResultPopup(null, null, baseAction); return; }
+
+        const titleEl = popup.querySelector('.enemy-phase-popup-text');
+        if (titleEl) titleEl.innerHTML = 'Quanti segnalini azione?';
+
+        // Il costo base (1 token) è già stato speso — available = token rimasti
+        const available = this.playerTokenState.filter(t => t).length;
+        const baseDice  = baseAction.dice?.[0]?.count ?? 2;
+
+        // Bottoni: da 0 extra token (solo il base) fino a tutti i disponibili
+        btnsEl.innerHTML = Array.from({ length: available + 1 }, (_, extra) => {
+            const totalTokens = 1 + extra;
+            const totalDice   = baseDice + extra;
+            return `<button class="btn-codec" style="font-size:1.2rem;padding:0.5rem 1rem;min-width:3rem"
+                onclick="App._confirmExtraTokenAttack('${playerName}',${extra},${totalDice})">
+                <span class="btn-inner">${totalTokens}</span>
+            </button>`;
+        }).join('');
+
+        this._extraTokenBaseAction = baseAction;
+        popup.style.display = 'flex';
+    },
+
+    _confirmExtraTokenAttack(playerName, extraTokens, totalDice) {
+        document.getElementById('token-attack-popup').style.display = 'none';
+        if (extraTokens > 0) this.spendTokens(extraTokens, playerName);
+        const action = { ...this._extraTokenBaseAction, dice: [{ color: 'white', count: totalDice }] };
+        this.showAttackResultPopup(null, null, action);
     },
 
     _showBossDamageSelectorPopup(enemyId) {
@@ -4641,6 +4893,59 @@ const App = {
             }, { once: true });
         }
         audio.play().catch(e => console.warn(e.message));
+        if (card.hitPlayer) {
+            audio.addEventListener('ended', () => this._showBossPlayerHitPopup(), { once: true });
+        }
+    },
+
+    _showBossPlayerHitPopup() {
+        const players = this.stagePlayers || [];
+        const popup = document.getElementById('token-attack-popup');
+        const btnsEl = document.getElementById('token-attack-btns');
+        if (!popup || !btnsEl) return;
+
+        const playerBtns = players.map(p =>
+            `<button class="btn-codec" style="font-size:1rem;padding:0.4rem 0.9rem"
+                onclick="App._bossPlayerHitSelectPlayer('${p}')">
+                <span class="btn-inner">${p.toUpperCase()}</span>
+            </button>`
+        ).join('');
+
+        const titleEl = popup.querySelector('.enemy-phase-popup-text');
+        if (titleEl) titleEl.innerHTML = 'Giocatore colpito?<br><span style="font-size:0.8rem;opacity:0.7">Seleziona il personaggio</span>';
+        btnsEl.innerHTML = playerBtns + `<button class="btn-codec" style="font-size:1rem;padding:0.4rem 0.9rem"
+            onclick="document.getElementById('token-attack-popup').style.display='none'">
+            <span class="btn-inner">NESSUNO</span>
+        </button>`;
+        popup.style.display = 'flex';
+    },
+
+    _bossPlayerHitSelectPlayer(playerName) {
+        const popup = document.getElementById('token-attack-popup');
+        const btnsEl = document.getElementById('token-attack-btns');
+        const titleEl = popup?.querySelector('.enemy-phase-popup-text');
+        if (!popup || !btnsEl) return;
+
+        if (titleEl) titleEl.innerHTML = `${playerName.toUpperCase()} — Quanti danni?<br><span style="font-size:0.8rem;opacity:0.7">0 = nessun danno</span>`;
+        const maxHp = CHARACTERS[playerName]?.hp || 4;
+        btnsEl.innerHTML = Array.from({ length: maxHp + 1 }, (_, i) =>
+            `<button class="btn-codec" style="font-size:1.2rem;padding:0.4rem 0.9rem;min-width:3rem"
+                onclick="App._bossPlayerHitApplyDamage('${playerName}',${i})">
+                <span class="btn-inner">${i}</span>
+            </button>`
+        ).join('');
+    },
+
+    _bossPlayerHitApplyDamage(playerName, damage) {
+        document.getElementById('token-attack-popup').style.display = 'none';
+        if (damage <= 0) return;
+        const prevHp = this.hpState?.[playerName] ?? (CHARACTERS[playerName]?.hp || 4);
+        this.adjustHp(playerName, -damage, true); // skipHurtSound=true, gestiamo noi
+        const newHp = this.hpState?.[playerName] ?? 0;
+        if (newHp > 0) {
+            const ch = CHARACTERS[playerName];
+            if (ch?.hurtPlusSound) this._playActionSound(ch.hurtPlusSound);
+        }
     },
 
     flipBossCard(enemyId) {
@@ -4704,7 +5009,15 @@ const App = {
             const enemy = this.currentStage?.bossEnemies?.find(e => e.id === enemyId);
             if (enemy) {
                 if (current === 0) {
-                    this._triggerBossKo(enemy);
+                    if (enemy.hitLeadSound && enemy.hitWoundSound) {
+                        const delay = enemy.hitWoundDelay ?? 300;
+                        this.playSfx(enemy.hitLeadSound);
+                        setTimeout(() => {
+                            this._playSfxOnce(enemy.hitWoundSound, () => this._triggerBossKo(enemy));
+                        }, delay);
+                    } else {
+                        this._triggerBossKo(enemy);
+                    }
                 } else if (enemy.hitSequence) {
                     // Sidebar: suono ferita sempre + video se primo colpo o metà vita
                     const maxHp = this.bossMaxHpState?.[enemyId] ?? 0;
@@ -4727,6 +5040,23 @@ const App = {
                     } else if (crossedHalf && (enemy.hitHalfSound || enemy.hitHalfVideo)) {
                         if (enemy.hitHalfSound) this.playSfx(enemy.hitHalfSound);
                         if (enemy.hitHalfVideo) this._playBossHalfVideo(enemy.hitHalfVideo, 3000);
+                    } else if (enemy.hitLeadSound) {
+                        const dmg = -delta;
+                        const threshold = enemy.hitWoundPlusThreshold ?? 3;
+                        const woundSound = (dmg >= threshold && enemy.hitWoundPlusSound)
+                            ? enemy.hitWoundPlusSound
+                            : (enemy.hitWoundSound ?? enemy.hitLeadSound);
+                        const delay = enemy.hitWoundDelay ?? 300;
+                        if (enemy.hitExplosionSound) {
+                            this.playSfx(enemy.hitExplosionSound);
+                            setTimeout(() => {
+                                this.playSfx(enemy.hitLeadSound);
+                                setTimeout(() => this.playSfx(woundSound), delay);
+                            }, 300);
+                        } else {
+                            this.playSfx(enemy.hitLeadSound);
+                            setTimeout(() => this.playSfx(woundSound), delay);
+                        }
                     } else {
                         const dmg = -delta;
                         const exactEntry = (enemy.damageSounds || []).find(ds => ds.damage === dmg);
@@ -4753,6 +5083,7 @@ const App = {
     hidePlayerSidebar() {
         const sidebar = document.getElementById('player-sidebar');
         if (sidebar) sidebar.style.display = 'none';
+        this._stopZoneSfx();
         this.hpState        = {};
         this.markerState    = {};
         this.playerZoneState = {};
@@ -4875,6 +5206,8 @@ const App = {
             el.classList.add('hp-flash');
             el.addEventListener('animationend', () => el.classList.remove('hp-flash'), { once: true });
         }
+
+        if (current !== prev) this._refreshEquipmentPanel(playerName);
 
         if (current === 0 && prev > 0) this._onPlayerDeath(playerName);
 
@@ -5295,6 +5628,7 @@ const App = {
         }
 
         this._decreaseGuardInZone(playerName);
+        this.trackStat('kills');
     },
 
     // Atterramento silenzioso: kill automatica → diminuisce guardie + stat kill
@@ -5306,7 +5640,7 @@ const App = {
     _decreaseGuardInZone(playerName) {
         const zone = (this.playerZoneState && this.playerZoneState[playerName] !== undefined)
             ? this.playerZoneState[playerName] : 0;
-        this.updateEnemyCount(zone, -1);
+        this._applyEnemyCount(zone, -1);
     },
 
     _getDefaultEnemies(stage) {
@@ -5318,14 +5652,23 @@ const App = {
         const stage = this.currentStage;
         if (!stage || !this.enemyState) return;
 
-        if (Array.isArray(stage.radioEnemies)) {
+        // radioEnemies può essere:
+        // - array: soglie per zona (indipendente da numero giocatori)
+        // - oggetto { N: [...] }: soglie per zona indicizzate per numero di giocatori
+        let thresholds = stage.radioEnemies;
+        if (thresholds && !Array.isArray(thresholds)) {
+            const count = this.stagePlayers?.length || 1;
+            thresholds = thresholds[count] ?? thresholds[Object.keys(thresholds).sort((a,b) => b-a).find(k => k <= count)] ?? null;
+        }
+
+        if (Array.isArray(thresholds)) {
             // Ripristina le guardie nelle zone dove si trovano i giocatori
-            // fino alla soglia radioEnemies di quella zona
+            // fino alla soglia di quella zona
             const playerZones = new Set(
                 this.stagePlayers.map(p => this.playerZoneState[p] ?? 0)
             );
             playerZones.forEach(zone => {
-                const threshold = stage.radioEnemies[zone];
+                const threshold = thresholds[zone];
                 if (threshold === undefined) return;
                 const cur = this.enemyState[zone] || 0;
                 if (cur < threshold) this.updateEnemyCount(zone, threshold - cur);
@@ -5353,6 +5696,7 @@ const App = {
     _playMusicForZone(zoneIndex, useElevator) {
         const stage = this.currentStage;
         if (!stage) return;
+        this._startZoneSfx(zoneIndex);
         // Non cambiare musica se alert/evasion è attivo
         if (this.alertState !== 'normal') return;
         const ids = stage.musicIds || [];
@@ -5364,6 +5708,23 @@ const App = {
         } else {
             this.playMusicAtVolume(id, (document.getElementById('music-volume')?.value || 25) / 100);
         }
+    },
+
+    // SFX periodici per zona (es. corvi nel Magazzino)
+    _zoneSfxInterval: null,
+
+    _startZoneSfx(zoneIndex) {
+        this._stopZoneSfx();
+        const cfg = this.currentStage?.zoneSfx?.[zoneIndex];
+        if (!cfg?.sounds?.length || !cfg?.interval) return;
+        this._zoneSfxInterval = setInterval(() => {
+            const file = cfg.sounds[Math.floor(Math.random() * cfg.sounds.length)];
+            this.playSfx(file);
+        }, cfg.interval);
+    },
+
+    _stopZoneSfx() {
+        if (this._zoneSfxInterval) { clearInterval(this._zoneSfxInterval); this._zoneSfxInterval = null; }
     },
 
     setPlayerZone(playerName, zoneIndex) {
@@ -5447,6 +5808,7 @@ const App = {
             const sfx = new Audio('audio/sfx/!.mp3');
             sfx.volume = 0.8;
             sfx.play().catch(e => console.warn(e.message));
+            if (isCamera) setTimeout(() => this.triggerAlert(), 1000);
         }
         this._inCameraSight = isCamera;
         // Attiva marker ! per il giocatore
@@ -5605,6 +5967,19 @@ const App = {
         });
 
         this._renderEquipmentPopup();
+        const stage = STAGES.find(s => s.id === this._pendingStageId);
+        const notice = document.getElementById('equipment-popup-notice');
+        if (notice) {
+            const reqEq = stage?.requiredEquipment;
+            if (reqEq) {
+                const eqName = EQUIPMENT[reqEq]?.name || reqEq;
+                notice.textContent = `⚠ Almeno 1 giocatore deve equipaggiare: ${reqEq} — ${eqName}`;
+                notice.style.display = '';
+            } else {
+                notice.style.display = 'none';
+                notice.textContent = '';
+            }
+        }
         document.getElementById('equipment-popup').style.display = 'flex';
     },
 
@@ -5627,7 +6002,7 @@ const App = {
                 const isInactive = i > 0 && !slots[i - 1];
                 const usedIds    = this._getAllUsedEquipment(p, i);
                 // Include anche gli item con owner === p non ancora nell'unlocked pool
-                const ownerItems = Object.keys(EQUIPMENT).filter(id => EQUIPMENT[id].owner && [].concat(EQUIPMENT[id].owner).includes(p) && !unlocked.includes(id));
+                const ownerItems = Object.keys(EQUIPMENT).filter(id => EQUIPMENT[id].owner && !EQUIPMENT[id].rewardOnly && [].concat(EQUIPMENT[id].owner).includes(p) && !unlocked.includes(id));
                 const pool       = [...unlocked, ...ownerItems];
                 const noWeapons  = !!(CHARACTERS[p]?.noWeapons);
                 const baseEquip  = CHARACTERS[p]?.baseEquipment || [];
@@ -5822,6 +6197,24 @@ const App = {
     },
 
     confirmEquipmentPopup() {
+        const stage = STAGES.find(s => s.id === this._pendingStageId);
+        const reqEq = stage?.requiredEquipment;
+        if (reqEq) {
+            const players = this._pendingSelectedPlayers || [];
+            const hasIt = players.some(p =>
+                (this.playerEquipment[p] || []).includes(reqEq)
+            );
+            if (!hasIt) {
+                const notice = document.getElementById('equipment-popup-notice');
+                if (notice) {
+                    notice.style.display = '';
+                    notice.classList.remove('equipment-popup-notice-shake');
+                    void notice.offsetWidth;
+                    notice.classList.add('equipment-popup-notice-shake');
+                }
+                return;
+            }
+        }
         document.getElementById('equipment-popup').style.display = 'none';
         this._doStartStage();
     },
@@ -6007,6 +6400,25 @@ const App = {
         `).join('');
     },
 
+    showGameOverConfirm() {
+        const popup = document.getElementById('gameover-confirm-popup');
+        if (popup) {
+            popup.style.display = 'flex';
+            popup.querySelector('[autofocus]')?.focus();
+        }
+    },
+
+    cancelGameOverConfirm() {
+        const popup = document.getElementById('gameover-confirm-popup');
+        if (popup) popup.style.display = 'none';
+    },
+
+    confirmGameOver() {
+        const popup = document.getElementById('gameover-confirm-popup');
+        if (popup) popup.style.display = 'none';
+        this.triggerGameOver();
+    },
+
     triggerGameOver(specificSoundId = null) {
         if (!this.currentStage) return;
         this.stopMusic();
@@ -6039,8 +6451,8 @@ const App = {
             const savedFor = this.session?.savedForStage ?? 0;
             if (savedFor >= stageAtGameOver.id) {
                 this.showPlayersPopup(stageAtGameOver);
-            } else if (stageAtGameOver.id === 2) {
-                // Stage 2: il salvataggio scatta dopo l'intro, non prima dei personaggi
+            } else if (stageAtGameOver.id === 2 || stageAtGameOver.id === 14) {
+                // Stage 2 e 14: il salvataggio scatta dopo l'intro, non prima dei personaggi
                 this.showPlayersPopup(stageAtGameOver);
             } else {
                 this._triggerInlineSave(stageAtGameOver);
@@ -6175,6 +6587,24 @@ const App = {
     // KEYBOARD HANDLER
     // ============================================
     handleKeydown(e) {
+        // Score screen
+        if (this.currentScreen === 'score-screen') {
+            const scoreSavePopup = document.getElementById('score-save-popup');
+            const popupOpen = scoreSavePopup && scoreSavePopup.style.display !== 'none';
+            if (popupOpen) {
+                if (e.key === 'Escape') { scoreSavePopup.style.display = 'none'; e.preventDefault(); }
+                return;
+            }
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                this.promptScoreSave();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                this.showScreen('main-menu');
+            }
+            return;
+        }
+
         // Inline save popup: intercetta prima di tutto
         const inlineSavePopup = document.getElementById('inline-save-question');
         if (inlineSavePopup && inlineSavePopup.style.display !== 'none') {
@@ -6316,7 +6746,7 @@ const App = {
 
     initSession() {
         const raw = localStorage.getItem(this.SESSION_KEY);
-        this.session = raw ? JSON.parse(raw) : this._newSession();
+        this.session = raw ? { ...this._newSession(), ...JSON.parse(raw) } : this._newSession();
     },
 
     _newSession() {
@@ -6333,6 +6763,9 @@ const App = {
             saves: 0,
             rounds: 0,
             trappola: false,
+            bandana_used: false,
+            mimetica_used: false,
+            startTime: new Date().toISOString(),
             timestamp: new Date().toISOString(),
             // Campagna: persistono tra gli stage
             unlockedEquipment: [],   // ID equipaggiamenti sbloccati attraverso le ricompense
@@ -6347,6 +6780,10 @@ const App = {
         if (!this.session || !(stat in this.session)) return;
         this.session[stat]++;
         this._persistSession();
+        if (this.showSessionStats) {
+            const block = document.querySelector('.session-stats-block');
+            if (block) block.outerHTML = this._buildSessionStatsHtml();
+        }
     },
 
     _getCard(n) {
@@ -6370,7 +6807,7 @@ const App = {
     loadFromBlock(cardNum, blockId) {
         const block = this._getCard(cardNum)[blockId];
         if (!block) return false;
-        this.session = { ...block };
+        this.session = { ...this._newSession(), ...block };
         this._persistSession();
         return true;
     },
@@ -6423,11 +6860,20 @@ const App = {
 
     playSaveOutro() {
         const isInline = this._inInlineSaveMode;
+        const postScreen = this._postSaveScreen;
+        this._postSaveScreen = null;
         const src = (isInline && this._inlineSaveVideoPath('save')) || this._randomSaveVideo(CONFIG.saveScreen && CONFIG.saveScreen.outro);
         const onEnd = () => {
             this._saveOutroActive = false;
             if (isInline) {
                 this._afterInlineSaveComplete();
+            } else if (postScreen === 'intro') {
+                this.startIntroVideo();
+            } else if (postScreen === 'main-menu') {
+                this.goToMainMenu();
+            } else if (postScreen) {
+                this.cardReturnScreen = 'main-menu';
+                this.showScreen(postScreen);
             } else {
                 this.cardReturnScreen = 'main-menu';
                 this.showScreen('stage-active');
@@ -6437,7 +6883,7 @@ const App = {
         const returnTo = this.cardReturnScreen;
         this._saveOutroActive = (returnTo === 'stage-active') || isInline;
         this.setActiveVideoBtn(document.getElementById('save-btn-outro'));
-        this._playSaveVideo(src, (returnTo === 'stage-active' || isInline) ? onEnd : null);
+        this._playSaveVideo(src, (returnTo === 'stage-active' || isInline || postScreen) ? onEnd : null);
     },
 
     _playNotSaveOutro() {
@@ -6666,7 +7112,16 @@ const App = {
     // DIFFICULTY SELECT
     // ============================================
     showDifficultyScreen() {
-        // Aggiorna stato lock EXTREME da localStorage
+        // Sblocca EXTREME se almeno un salvataggio ha la bandana (023) tra gli equipment sbloccati
+        const hasBandanaInAnyCard = [1, 2].some(cardNum => {
+            const card = this._getCard(cardNum);
+            return Object.values(card).some(block =>
+                Array.isArray(block?.unlockedEquipment) && block.unlockedEquipment.includes('023')
+            );
+        });
+        if (hasBandanaInAnyCard) {
+            localStorage.setItem('mgs_extreme_unlocked', '1');
+        }
         const unlocked = !!localStorage.getItem('mgs_extreme_unlocked');
         const extreme = this.difficulties.find(d => d.id === 'EXTREME');
         if (extreme) extreme.locked = !unlocked;
@@ -6789,7 +7244,7 @@ const App = {
 
     _blockRightHtml(block) {
         const disc = (block.stage >= 12) ? 'DISC II' : 'DISC I';
-        const diff = block.difficulty || '—';
+        const diff = block.difficulty || 'NORMAL';
         const rounds = block.rounds || 0;
         const hh = String(Math.floor(rounds / 60)).padStart(2, '0');
         const mm = String(rounds % 60).padStart(2, '0');
