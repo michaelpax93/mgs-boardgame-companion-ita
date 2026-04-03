@@ -73,6 +73,19 @@ const App = {
     FADE_DURATION: 1500,
     LOOP_OVERLAP: 0.15,
     showSessionStats: false,   // mostra dati sessione nella sidebar (settabile dalle opzioni)
+    sfxVolume: 85,             // 0-100, volume effetti sonori
+    defaultMusicVolume: 15,    // 0-100, volume musica stage
+    menuMusicVolume: 35,       // 0-100, volume musica menu
+    vrUnlockAll: false,        // sblocca tutti i livelli VR senza doverli fare in ordine
+
+    // Stato VR runtime
+    vrMode: false,
+    vrNav: { level: 'top', bossId: null },
+    vrCurrentBossId: null,
+    vrCurrentStageId: null,
+    vrLoadedCard: null,
+    vrLoadedBlock: null,
+    _vrTypewriterTimer: null,
 
     // Fase soldati — azioni guardie (fase 1)
     GUARD_CARDS: [
@@ -205,7 +218,9 @@ const App = {
         { label: 'NEW GAME',    action: 'newGame' },
         { label: 'LOAD GAME',   action: 'loadGame' },
         { label: 'BRIEFING',    action: 'briefing' },
-        { label: 'VR TRAINING', action: 'vrTraining' },
+        { label: 'VR TRAINING', action: 'vrTraining', locked: true },
+        { label: 'OPTION',      action: 'option' },
+        { label: 'CREDITS',     action: 'credits' },
     ],
     menuIndex: 0,
     menuLocked: false,
@@ -450,7 +465,7 @@ const App = {
         const cfg = CONFIG.music['introduction'];
         if (!cfg) return;
         if (this._audioCtx) this._loadBuffer(cfg.file).catch(() => {});
-        this.menuMusicLoop = this.createSeamlessLoop(cfg.file, 0.35, cfg.loopOverlap, this._cfgLoopPoints(cfg));
+        this.menuMusicLoop = this.createSeamlessLoop(cfg.file, this.menuMusicVolume / 100, cfg.loopOverlap, this._cfgLoopPoints(cfg));
         this.menuMusicLoop.play();
     },
 
@@ -459,18 +474,42 @@ const App = {
     },
 
     updateMenuWheel() {
+        this._refreshVrLock();
         const items = this.menuItems;
         const len = items.length;
         const prevIdx = (this.menuIndex - 1 + len) % len;
         const nextIdx = (this.menuIndex + 1) % len;
 
-        const prevEl = document.getElementById('menu-prev');
-        const labelEl = document.getElementById('menu-label');
-        const nextEl = document.getElementById('menu-next');
+        const prevEl    = document.getElementById('menu-prev');
+        const currentEl = document.getElementById('menu-current');
+        const labelEl   = document.getElementById('menu-label');
+        const nextEl    = document.getElementById('menu-next');
 
-        if (prevEl) prevEl.textContent = items[prevIdx].label;
+        if (prevEl) {
+            prevEl.textContent = items[prevIdx].label;
+            prevEl.classList.toggle('locked', !!items[prevIdx].locked);
+        }
         if (labelEl) labelEl.textContent = items[this.menuIndex].label;
-        if (nextEl) nextEl.textContent = items[nextIdx].label;
+        if (currentEl) currentEl.classList.toggle('locked', !!items[this.menuIndex].locked);
+        if (nextEl) {
+            nextEl.textContent = items[nextIdx].label;
+            nextEl.classList.toggle('locked', !!items[nextIdx].locked);
+        }
+    },
+
+    _isVrUnlocked() {
+        return [1, 2].some(cardNum => {
+            const card = this._getCard(cardNum);
+            return Object.values(card).some(block =>
+                (block?.savedForStage ?? 0) >= 3 ||
+                (Array.isArray(block?.unlockedEquipment) && block.unlockedEquipment.includes('023'))
+            );
+        });
+    },
+
+    _refreshVrLock() {
+        const vr = this.menuItems.find(i => i.action === 'vrTraining');
+        if (vr) vr.locked = !this._isVrUnlocked();
     },
 
     menuNav(dir) {
@@ -516,6 +555,7 @@ const App = {
 
         const item = this.menuItems[this.menuIndex];
         if (!item) return;
+        if (item.locked) return;
 
         // Play confirm sound
         this.playSfx(CONFIG.menuSounds['confirm'].file);
@@ -538,7 +578,14 @@ const App = {
                     break;
                 case 'vrTraining':
                     this.stopMenuMusic();
-                    this.showScreen('vr-screen');
+                    this.showVrCardScreen();
+                    break;
+                case 'option':
+                    this._initOptionScreen();
+                    this.showScreen('option-screen');
+                    break;
+                case 'credits':
+                    this.showScreen('credits-screen');
                     break;
             }
         }, 300);
@@ -876,7 +923,7 @@ const App = {
         if (!ev.file) {
             if (ev.sound) {
                 const sfx = new Audio(ev.sound);
-                sfx.volume = 0.85;
+                sfx.volume = App._sfxVol();
                 sfx.play().catch(() => {});
             }
             // Equipaggiamento bonus al giocatore corrente
@@ -1165,7 +1212,7 @@ const App = {
             if (!this.currentStage) return;
             const offset = this.currentStage.musicStartOffset ?? null;
             if (offset != null) {
-                const volume = (document.getElementById('music-volume')?.value || 25) / 100;
+                const volume = this._getMusicVolumeNum();
                 this.playMusicAtVolume(ids[0], volume, offset);
             } else {
                 this.playMusic(ids[0]);
@@ -1306,6 +1353,12 @@ const App = {
     },
 
     goBackFromStage() {
+        if (this.vrMode) {
+            this._exitVrStage();
+            this._vrNavTo('stagelist', this.vrCurrentBossId);
+            this.showScreen('vr-screen');
+            return;
+        }
         this.stopAllAudio();
         this.hidePlayerSidebar();
         if (this.newGameMode) {
@@ -1317,6 +1370,14 @@ const App = {
     },
 
     goNextStage() {
+        if (this.vrMode) {
+            const stages = VR_CONFIG.stages;
+            const idx = stages.findIndex(s => s.id === this.vrCurrentStageId);
+            if (idx < stages.length - 1) {
+                this.launchVrStage(this.vrCurrentBossId, stages[idx + 1].id);
+            }
+            return;
+        }
         if (!this.currentStage) return;
         const nextStage = STAGES.find(s => s.id === this.currentStage.id + 1);
         const destination = nextStage || 'score';
@@ -1970,7 +2031,7 @@ const App = {
                         ?? (this.stagePlayers?.length === 1 ? this.stagePlayers[0] : null);
                     const currentZone = activePlayer != null ? (this.playerZoneState[activePlayer] ?? 0) : 0;
                     const zoneId = ids[currentZone] ?? ids[0];
-                    const volume = (document.getElementById('music-volume')?.value || 25) / 100;
+                    const volume = this._getMusicVolumeNum();
                     this.playMusicAtVolume(zoneId, volume);
                 }, 100);
             }
@@ -1992,6 +2053,8 @@ const App = {
         }
 
         if (category) category.style.display = '';
+        const musicSlider = document.getElementById('music-volume');
+        if (musicSlider) musicSlider.value = this.defaultMusicVolume;
         const disabledClass = stage.startInAlert ? ' btn-disabled' : '';
         const hasEnemies = Array.isArray(stage.enemies) && stage.enemies.length > 0;
         container.innerHTML = ids.map((id, i) => {
@@ -2107,7 +2170,7 @@ const App = {
     },
 
     playMusic(id) {
-        const normalVolume = (document.getElementById('music-volume')?.value || 25) / 100;
+        const normalVolume = this._getMusicVolumeNum();
         const stage = this.currentStage;
 
         // Sincronizza la zona del giocatore attivo con la zona musicale scelta
@@ -2147,7 +2210,7 @@ const App = {
 
     fadeMusicToNormalVolume() {
         if (!this.musicLoop) return;
-        const targetVolume = (document.getElementById('music-volume')?.value || 25) / 100;
+        const targetVolume = this._getMusicVolumeNum();
         const startVolume = this.musicLoop.getVolume();
         const steps = 30;
         const interval = this.FADE_DURATION / steps;
@@ -2164,11 +2227,14 @@ const App = {
     },
 
     setMusicVolume(val) {
+        this.defaultMusicVolume = parseInt(val);
         if (this.musicLoop) this.musicLoop.setVolume(val / 100);
     },
 
+    _sfxVol() { return this.sfxVolume / 100; },
+
     _getMusicVolumeNum() {
-        return (document.getElementById('music-volume')?.value || 15) / 100;
+        return this.defaultMusicVolume / 100;
     },
 
     _getAlertVolumeNum() {
@@ -2179,7 +2245,7 @@ const App = {
         const wrap = document.getElementById('alert-volume-wrap');
         if (!wrap) return;
         const slider = document.getElementById('alert-volume');
-        if (slider) slider.value = document.getElementById('music-volume')?.value || 15;
+        if (slider) slider.value = this.defaultMusicVolume;
         wrap.style.display = '';
     },
 
@@ -2614,13 +2680,13 @@ const App = {
             const missileAttivo = !!this.missileState[playerName];
             const playMovimento = () => {
                 const mov = new Audio('audio/sfx/missile-movimento.wav');
-                mov.volume = 0.85;
+                mov.volume = App._sfxVol();
                 mov.addEventListener('ended', () => this._showMissilePopup(playerName), { once: true });
                 mov.play().catch(() => this._showMissilePopup(playerName));
             };
             if (!missileAttivo) {
                 const sparato = new Audio('audio/sfx/missile-sparato.wav');
-                sparato.volume = 0.85;
+                sparato.volume = App._sfxVol();
                 sparato.addEventListener('ended', playMovimento, { once: true });
                 sparato.play().catch(playMovimento);
             } else {
@@ -2643,7 +2709,7 @@ const App = {
                 const followUpFile  = typeof followUp === 'string' ? followUp : followUp.file;
                 const followUpDelay = typeof followUp === 'object' ? (followUp.delay ?? null) : null;
                 const audio = new Audio(a.sound);
-                audio.volume = 0.85;
+                audio.volume = App._sfxVol();
                 if (followUpDelay !== null) {
                     setTimeout(() => this.playSfx(followUpFile), followUpDelay);
                 } else {
@@ -2782,7 +2848,7 @@ const App = {
         // Ostacolo: esplode → alert → chiedi se colpisce qualcuno
         this.missileState[player] = false;
         const sfx = new Audio('audio/sfx/esplosione.wav');
-        sfx.volume = 0.85;
+        sfx.volume = App._sfxVol();
         sfx.play().catch(() => {});
         if (!this.currentStage?.isBoss) {
             const zone = this.playerZoneState[player] ?? 0;
@@ -3076,7 +3142,7 @@ const App = {
             this.ketchupState[player] = false;
             this.ketchupUsed = true;
             const sfx = new Audio('audio/sfx/ketchup.wav');
-            sfx.volume = 0.85;
+            sfx.volume = App._sfxVol();
             sfx.addEventListener('ended', () => {
                 if (pendingEvent) this.playEvent(pendingEvent);
             }, { once: true });
@@ -3349,7 +3415,7 @@ const App = {
     _playActionSound(file) {
         if (!file) return;
         const audio = new Audio(file);
-        audio.volume = 0.85;
+        audio.volume = App._sfxVol();
         audio.play().catch(() => {});
     },
 
@@ -3376,7 +3442,7 @@ const App = {
             || ch?.defaultVariableActions?.find(a => a.id === 'bussata')?.sound
             || 'audio/azioni/snake/bussata.wav';
         const sfx = new Audio(bussataSound);
-        sfx.volume = 0.85;
+        sfx.volume = App._sfxVol();
         sfx.play().catch(() => {});
         sfx.addEventListener('ended', () => {
             const zone = this.playerZoneState[playerName] ?? 0;
@@ -3387,7 +3453,7 @@ const App = {
                 this._playActionSound('audio/azioni/guardie/soldato-ho-sentito-qualcosa.wav');
             } else if (currentMarker.inter) {
                 const eh = new Audio('audio/azioni/guardie/soldato-eh.wav');
-                eh.volume = 0.85;
+                eh.volume = App._sfxVol();
                 eh.play().catch(() => {});
                 eh.addEventListener('ended', () => {
                     setTimeout(() => this._playActionSound('audio/azioni/guardie/soldato-cosa-e-stato.wav'), 500);
@@ -4187,10 +4253,10 @@ const App = {
     },
 
     _buildSessionStatsHtml() {
+        if (!this.showSessionStats) return '';
         const s = this.session;
-        const shown = this.showSessionStats;
-        const chevron = shown ? '▲' : '▼';
-        const statsBody = shown && s ? `
+        if (!s) return '';
+        return `<div class="session-stats-block">
             <div class="session-stats-body">
                 <div class="session-stat"><span class="stat-label">Play Time</span><span class="stat-val">${s.rounds}</span></div>
                 <div class="session-stat"><span class="stat-label">Save</span><span class="stat-val">${s.saves}</span></div>
@@ -4198,13 +4264,7 @@ const App = {
                 <div class="session-stat"><span class="stat-label">Being Found</span><span class="stat-val">${s.alerts}</span></div>
                 <div class="session-stat"><span class="stat-label">Enemies</span><span class="stat-val">${s.kills + s.kills_silent}</span></div>
                 <div class="session-stat"><span class="stat-label">Rations</span><span class="stat-val">${s.rations_used}</span></div>
-            </div>` : '';
-        return `<div class="session-stats-block">
-            <button class="session-stats-toggle" onclick="App.toggleSessionStats()"
-                title="${shown ? 'Nascondi statistiche sessione' : 'Mostra statistiche sessione'}">
-                SESS ${chevron}
-            </button>
-            ${statsBody}
+            </div>
         </div>`;
     },
 
@@ -4637,7 +4697,7 @@ const App = {
         const playN = (n) => {
             if (n <= 0) return;
             const a = new Audio(file);
-            a.volume = 0.85;
+            a.volume = App._sfxVol();
             if (n > 1) a.addEventListener('ended', () => playN(n - 1), { once: true });
             a.play().catch(() => {});
         };
@@ -4677,7 +4737,7 @@ const App = {
                 if (next >= btn.max)  sound = btn.maxSound;
                 else if (isFirst)     sound = btn.firstSound;
                 else                  sound = btn.repeatSound;
-                if (sound) { const sfx = new Audio(sound); sfx.volume = 0.85; sfx.play().catch(() => {}); }
+                if (sound) { const sfx = new Audio(sound); sfx.volume = App._sfxVol(); sfx.play().catch(() => {}); }
             }
         }
     },
@@ -4692,7 +4752,7 @@ const App = {
         this._bossSpecialBtnUsed[key] = true;
         if (!file) return;
         const sfx = new Audio(file);
-        sfx.volume = 0.85;
+        sfx.volume = App._sfxVol();
         sfx.play().catch(() => {});
     },
 
@@ -4753,7 +4813,7 @@ const App = {
         const surviving = prev - damage > 0;
         if (surviving && ch?.hurtPlusSound) {
             const a = new Audio(ch.hurtPlusSound);
-            a.volume = 0.85;
+            a.volume = App._sfxVol();
             a.play().catch(() => {});
         }
         this.adjustHp(target, -damage, surviving);
@@ -4833,7 +4893,7 @@ const App = {
         const surviving = hp - damage > 0;
         if (surviving && ch?.hurtPlusSound) {
             const hurtAudio = new Audio(ch.hurtPlusSound);
-            hurtAudio.volume = 0.85;
+            hurtAudio.volume = App._sfxVol();
             if (atk?.hitVideo) {
                 hurtAudio.addEventListener('ended', () => {
                     setTimeout(() => {
@@ -5133,7 +5193,7 @@ const App = {
                     if (parallelSound && n === parallelAt && !parallelStarted && remaining <= parallelOffset) {
                         parallelStarted = true;
                         const p = new Audio(parallelSound);
-                        p.volume = 0.85;
+                        p.volume = App._sfxVol();
                         p.play().catch(() => {});
                     }
                     // Fade out dell'ultimo play
@@ -5164,7 +5224,7 @@ const App = {
                     if (!parallelStarted) {
                         parallelStarted = true;
                         const p = new Audio(parallelSound);
-                        p.volume = 0.85;
+                        p.volume = App._sfxVol();
                         p.play().catch(() => {});
                     }
                 }, { once: true });
@@ -5351,7 +5411,7 @@ const App = {
                     const src = sounds[Math.floor(Math.random() * sounds.length)];
                     setTimeout(() => {
                         const sfx = new Audio(src);
-                        sfx.volume = 0.85;
+                        sfx.volume = App._sfxVol();
                         sfx.play().catch(() => {});
                     }, 500);
                 }
@@ -5450,10 +5510,10 @@ const App = {
                     const pairT   = i * PAIR_MS + (isLast && hits > 1 ? 150 : 0);
                     const woundFile = isLast ? (amount > 1 ? (hs.woundPlusSound || hs.woundSound) : hs.woundSound) : hs.woundSound;
                     setTimeout(() => {
-                        const a = new Audio(hs.hitSound); a.volume = 0.85; a.play().catch(() => {});
+                        const a = new Audio(hs.hitSound); a.volume = App._sfxVol(); a.play().catch(() => {});
                     }, pairT);
                     setTimeout(() => {
-                        const a = new Audio(woundFile); a.volume = 0.85;
+                        const a = new Audio(woundFile); a.volume = App._sfxVol();
                         if (isLast) {
                             lastAudio = a;
                             if (newHp === 0) {
@@ -5479,7 +5539,7 @@ const App = {
             } else {
                 if (action?.attackType === 'physical' && !action?.noHitSound) {
                     const colpo = new Audio('audio/sfx/colpo-fisico.wav');
-                    colpo.volume = 0.85;
+                    colpo.volume = App._sfxVol();
                     colpo.play().catch(() => {});
                 }
                 const enemyForExtra = this.currentStage?.bossEnemies?.find(e => e.id === enemyId);
@@ -5706,7 +5766,7 @@ const App = {
         if (useElevator) {
             this.playMusic(id); // playMusic gestisce già l'elevator
         } else {
-            this.playMusicAtVolume(id, (document.getElementById('music-volume')?.value || 25) / 100);
+            this.playMusicAtVolume(id, this._getMusicVolumeNum());
         }
     },
 
@@ -5856,7 +5916,7 @@ const App = {
         returnAudio.addEventListener('ended', () => {
             const vp = document.getElementById('video-player');
             if (vp && !vp.paused) return; // video in riproduzione, non avviare musica
-            const normalVolume = (document.getElementById('music-volume')?.value || 25) / 100;
+            const normalVolume = this._getMusicVolumeNum();
             const stageIds = this.currentStage?.musicIds || [];
             const idToPlay = (this.lastMusicId && stageIds.includes(this.lastMusicId))
                 ? this.lastMusicId
@@ -5925,6 +5985,31 @@ const App = {
     startStageFromPopup() {
         const popup = document.getElementById('players-popup');
         if (popup) popup.style.display = 'none';
+
+        // Modalità VR
+        if (this._vrPopupMode) {
+            if (!this._pendingSelectedPlayers?.length) return;
+            const boss  = this._vrPendingBoss;
+            const stage = this._vrPendingStage;
+            this._vrPendingBoss  = null;
+            this._vrPendingStage = null;
+            // Mostra popup equipment se ci sono oggetti sbloccati
+            const unlocked = this.session?.unlockedEquipment || [];
+            const players  = this._pendingSelectedPlayers;
+            const hasOwnerItems = players.some(p =>
+                Object.values(EQUIPMENT).some(eq => eq.owner && [].concat(eq.owner).includes(p))
+            );
+            if (unlocked.length > 0 || hasOwnerItems) {
+                this._showEquipmentPopup();
+                // Dopo _doStartStage verrà chiamato il normale flusso;
+                // intercettiamo il termine di _doStartStage impostando _vrPendingLaunch
+                this._vrPendingLaunch = { boss, stage };
+            } else {
+                this._doLaunchVrStage(boss, stage);
+            }
+            return;
+        }
+
         if (!this._pendingStageId || !this._pendingSelectedPlayers?.length) return;
 
         const unlocked = this.session?.unlockedEquipment || [];
@@ -6216,6 +6301,12 @@ const App = {
             }
         }
         document.getElementById('equipment-popup').style.display = 'none';
+        if (this._vrPendingLaunch) {
+            const { boss, stage } = this._vrPendingLaunch;
+            this._vrPendingLaunch = null;
+            this._doLaunchVrStage(boss, stage);
+            return;
+        }
         this._doStartStage();
     },
 
@@ -6754,7 +6845,6 @@ const App = {
             stage: 1,
             difficulty: '',
             savedForStage: 0,    // ultimo stage per cui è stato effettuato un salvataggio
-            vr_mission_unlocked: 0,
             alerts: 0,
             kills: 0,
             kills_silent: 0,
@@ -6769,6 +6859,8 @@ const App = {
             timestamp: new Date().toISOString(),
             // Campagna: persistono tra gli stage
             unlockedEquipment: [],   // ID equipaggiamenti sbloccati attraverso le ricompense
+            // VR Training
+            vrCompleted: {},         // chiavi: "boss_ocelot_1", "training_1" → true
         };
     },
 
@@ -7004,6 +7096,12 @@ const App = {
     // MENU / BACK: torna allo schermo precedente
     cardBack() {
         this.pendingNextStageId = null;
+        if (this.cardScreenMode === 'vr') {
+            this.playSfx(CONFIG.menuSounds['return'].file);
+            this.startMenuMusic();
+            this.showScreen('main-menu');
+            return;
+        }
         const returnTo = this.cardReturnScreen || 'main-menu';
 
         // Modalità Mei Ling (save da stage-active)
@@ -7067,12 +7165,13 @@ const App = {
 
     _renderCardScreen() {
         const isSave = this.cardScreenMode === 'save';
+        const isVr   = this.cardScreenMode === 'vr';
         const title = document.getElementById('card-screen-title');
         const nextBtn = document.getElementById('btn-card-next');
         const videoSection = document.getElementById('save-video-section');
         const confirmArea = document.getElementById('block-confirm-area');
         const actionBtns = document.getElementById('card-action-btns');
-        if (title) title.textContent = isSave ? 'SALVATAGGIO' : 'CARICA PARTITA';
+        if (title) title.textContent = isSave ? 'SALVATAGGIO' : isVr ? 'VR TRAINING' : 'CARICA PARTITA';
         if (nextBtn) nextBtn.style.display = (isSave && this.cardReturnScreen !== 'stage-active') ? '' : 'none';
         if (videoSection) videoSection.style.display = isSave ? '' : 'none';
         if (confirmArea) { confirmArea.innerHTML = ''; confirmArea.style.display = 'none'; }
@@ -7255,6 +7354,22 @@ const App = {
         </div>`;
     },
 
+    _blockVrHtml(block) {
+        const pct = this._vrProgress(block);
+        return `<div class="block-vr">
+            <span class="block-vr-spacer"></span>
+            <span class="block-vr-label">VR TRAINING</span>
+            <span class="block-vr-pct">${pct}%</span>
+        </div>`;
+    },
+
+    _vrProgress(session) {
+        if (!session?.vrCompleted) return 0;
+        const count = Object.values(session.vrCompleted).filter(Boolean).length;
+        const raw = count * VR_CONFIG.stageProgress;
+        return raw === 0 ? 0 : Math.min(100, Math.round(raw * 10) / 10);
+    },
+
     _buildCardBlocks() {
         const container = document.getElementById('card-blocks');
         if (!container) return;
@@ -7276,8 +7391,11 @@ const App = {
                     this._visibleBlockIds.push(id);
                     rows.push(`<div class="card-block used${focCls}" id="card-block-${id}" onclick="App.selectBlock('${id}')" onmouseover="App.focusBlock('${id}')">
                         <div class="block-left">
-                            <span class="block-num">BLOCK ${num}</span>
-                            <span class="block-stage-name">${stageName}</span>
+                            <div class="block-left-campaign">
+                                <span class="block-num">BLOCK ${num}</span>
+                                <span class="block-stage-name">${stageName}</span>
+                            </div>
+                            ${this._blockVrHtml(block)}
                         </div>
                         ${this._blockRightHtml(block)}
                     </div>`);
@@ -7317,8 +7435,11 @@ const App = {
                 return `<div class="card-block ${block ? 'used' : 'empty'} ${disabledClass}"
                             id="card-block-${id}" onclick="App.selectBlock('${id}')"${hoverAttr}>
                             <div class="block-left">
-                                <span class="block-num">BLOCK ${String(i + 1).padStart(2, '0')}</span>
-                                ${leftContent}
+                                <div class="block-left-campaign">
+                                    <span class="block-num">BLOCK ${String(i + 1).padStart(2, '0')}</span>
+                                    ${leftContent}
+                                </div>
+                                ${block ? this._blockVrHtml(block) : ''}
                             </div>
                             ${block ? this._blockRightHtml(block) : ''}
                         </div>`;
@@ -7328,6 +7449,22 @@ const App = {
 
     selectBlock(blockId) {
         const block = this._getCard(this.selectedCard)[blockId];
+        if (this.cardScreenMode === 'vr') {
+            if (!block) return;
+            this.playSfx(CONFIG.menuSounds['confirm-save'].file);
+            this.selectedBlock = blockId;
+            document.querySelectorAll('.card-block').forEach(el => el.classList.remove('selected'));
+            document.getElementById(`card-block-${blockId}`)?.classList.add('selected');
+            const confirmArea = document.getElementById('block-confirm-area');
+            if (!confirmArea) return;
+            confirmArea.innerHTML = `
+                <span class="confirm-msg">Usare questo salvataggio per il VR Training?</span>
+                <button class="btn-codec btn-small" onclick="App.confirmBlock()"><span class="btn-inner">✓ CONFERMA</span></button>
+                <button class="btn-codec btn-small btn-stop" onclick="App.cancelBlock()"><span class="btn-inner">✗ ANNULLA</span></button>
+            `;
+            confirmArea.style.display = '';
+            return;
+        }
         if (this.cardScreenMode === 'save') {
             if (block) {
                 // Blocco occupato: chiedi conferma sovrascrittura
@@ -7372,6 +7509,8 @@ const App = {
         this.playSfx(CONFIG.menuSounds['confirm-save'].file);
         if (this.cardScreenMode === 'save') {
             this._doSave(blockId);
+        } else if (this.cardScreenMode === 'vr') {
+            this._doVrLoad(blockId);
         } else {
             this._doLoad(blockId);
         }
@@ -7463,7 +7602,503 @@ const App = {
             a.load();
             this._sfxPool[s.file] = a;
         });
-    }
+    },
+
+    // ============================================
+    // VR TRAINING
+    // ============================================
+
+    showVrCardScreen() {
+        this.cardScreenMode = 'vr';
+        this.selectedCard = 1;
+        this.selectedBlock = null;
+        this._renderCardScreen();
+        this.showScreen('card-screen');
+    },
+
+    _doVrLoad(blockId) {
+        const cardNum = this.selectedCard;
+        const block = this._getCard(cardNum)[blockId];
+        if (!block) return;
+        this.session = { ...this._newSession(), ...block };
+        this._persistSession();
+        this.vrLoadedCard = cardNum;
+        this.vrLoadedBlock = blockId;
+        this._goToVrMenu();
+    },
+
+    _goToVrMenu() {
+        this.vrNav = { level: 'top', bossId: null };
+        this._renderVrScreen();
+        this.showScreen('vr-screen');
+    },
+
+    _renderVrScreen() {
+        this._renderVrBreadcrumb();
+        this._renderVrContent();
+    },
+
+    _renderVrBreadcrumb() {
+        const bar = document.getElementById('vr-breadcrumb-bar');
+        if (!bar) return;
+        const { level, bossId } = this.vrNav;
+        const boss = bossId ? VR_CONFIG.bosses.find(b => b.id === bossId) : null;
+        const lines = [{ label: 'VR TRAINING', depth: 0 }];
+        if (level === 'bosslist' || level === 'stagelist' || level === 'training') {
+            lines.push({ label: level === 'training' ? 'TRAINING MODE' : 'BOSS VARIANT', depth: 1 });
+        }
+        if ((level === 'stagelist') && boss) {
+            lines.push({ label: boss.name, depth: 2 });
+        }
+        bar.innerHTML = lines.map((l, i) => {
+            const isLast = i === lines.length - 1;
+            const indent = '&nbsp;'.repeat(l.depth * 4);
+            return `<div class="vr-breadcrumb-line${isLast ? ' active' : ''}">
+                ${indent}<span class="vr-bc-arrow">${isLast ? '▶' : '◆'}</span> ${l.label}
+            </div>`;
+        }).join('');
+    },
+
+    _renderVrContent() {
+        const { level, bossId } = this.vrNav;
+        const content = document.getElementById('vr-menu-content');
+        if (!content) return;
+        if (level === 'top') {
+            this._renderVrTop(content);
+        } else if (level === 'bosslist') {
+            this._renderVrBossList(content);
+        } else if (level === 'stagelist') {
+            this._renderVrStageList(content, bossId);
+        } else if (level === 'training') {
+            this._renderVrTraining(content);
+        }
+    },
+
+    _renderVrTop(content) {
+        const totalStages = VR_CONFIG.stages.length;
+        const trainingDone = VR_CONFIG.stages.filter(s => this.session?.vrCompleted?.[`training_${s.id}`]).length;
+        content.innerHTML = `
+            <div class="vr-menu-list">
+                <div class="vr-menu-item" onclick="App._vrNavTo('training')">
+                    <span class="vr-item-arrow">▶</span>
+                    <span class="vr-item-label">TRAINING MODE</span>
+                    <span class="vr-item-info">${trainingDone}/${totalStages}</span>
+                </div>
+                <div class="vr-menu-item" onclick="App._vrNavTo('bosslist')">
+                    <span class="vr-item-arrow">▶</span>
+                    <span class="vr-item-label">BOSS VARIANT</span>
+                    <span class="vr-item-info">${VR_CONFIG.bosses.length} boss</span>
+                </div>
+            </div>
+            <div class="vr-progress-bar-wrap">
+                <div class="vr-progress-label">PROGRESS</div>
+                <div class="vr-progress-track">
+                    <div class="vr-progress-fill" style="width:${this._vrProgress(this.session)}%"></div>
+                </div>
+                <div class="vr-progress-pct">${this._vrProgress(this.session)}%</div>
+            </div>`;
+    },
+
+    _renderVrBossList(content) {
+        const total = VR_CONFIG.stages.length;
+        const items = VR_CONFIG.bosses.map(boss => {
+            const completed = VR_CONFIG.stages.filter(s => this.session?.vrCompleted?.[`boss_${boss.id}_${s.id}`]).length;
+            return `<div class="vr-menu-item" onclick="App._vrNavTo('stagelist','${boss.id}')">
+                <span class="vr-item-arrow">▶</span>
+                <span class="vr-item-label">${boss.name}</span>
+                <span class="vr-item-info">${completed}/${total}</span>
+            </div>`;
+        }).join('');
+        content.innerHTML = `<div class="vr-menu-list">${items}</div>`;
+    },
+
+    _renderVrStageList(content, bossId) {
+        const boss = VR_CONFIG.bosses.find(b => b.id === bossId);
+        if (!boss) return;
+        const items = VR_CONFIG.stages.map((stage, idx) => {
+            const key = `boss_${boss.id}_${stage.id}`;
+            const done = !!(this.session?.vrCompleted?.[key]);
+            const unlocked = this.vrUnlockAll || done
+                || idx === 0
+                || !!(this.session?.vrCompleted?.[`boss_${boss.id}_${VR_CONFIG.stages[idx - 1]?.id}`]);
+            const cls = done ? ' vr-stage-done' : (!unlocked ? ' vr-stage-locked' : '');
+            const badge = done ? '<span class="vr-stage-check">✓</span>' : (!unlocked ? '<span class="vr-stage-lock">■</span>' : '');
+            const click = unlocked ? `onclick="App.launchVrStage('${boss.id}',${stage.id})"` : '';
+            return `<div class="vr-stage-item${cls}" ${click}>
+                <span class="vr-stage-num">${String(stage.id).padStart(2,'0')}</span>
+                <span class="vr-stage-name">${stage.name}</span>
+                ${badge}
+            </div>`;
+        }).join('');
+        content.innerHTML = `<div class="vr-stage-list">${items}</div>`;
+    },
+
+    _renderVrTraining(content) {
+        const items = VR_CONFIG.stages.map((stage, idx) => {
+            const key = `training_${stage.id}`;
+            const done = !!(this.session?.vrCompleted?.[key]);
+            const unlocked = this.vrUnlockAll || done
+                || idx === 0
+                || !!(this.session?.vrCompleted?.[`training_${VR_CONFIG.stages[idx - 1]?.id}`]);
+            const cls = done ? ' vr-stage-done' : (!unlocked ? ' vr-stage-locked' : '');
+            const badge = done ? '<span class="vr-stage-check">✓</span>' : (!unlocked ? '<span class="vr-stage-lock">■</span>' : '');
+            const click = unlocked ? `onclick="App.launchVrStage(null,${stage.id})"` : '';
+            return `<div class="vr-stage-item${cls}" ${click}>
+                <span class="vr-stage-num">${String(stage.id).padStart(2,'0')}</span>
+                <span class="vr-stage-name">${stage.name}</span>
+                ${badge}
+            </div>`;
+        }).join('');
+        content.innerHTML = `<div class="vr-stage-list">${items}</div>`;
+    },
+
+    _vrNavTo(level, bossId = null) {
+        this.vrNav = { level, bossId };
+        this._renderVrScreen();
+    },
+
+    vrBack() {
+        const { level } = this.vrNav;
+        if (level === 'top') {
+            this.playMenuReturn();
+            this.showScreen('main-menu');
+        } else if (level === 'bosslist' || level === 'training') {
+            this._vrNavTo('top');
+        } else if (level === 'stagelist') {
+            this._vrNavTo('bosslist');
+        }
+    },
+
+    launchVrStage(bossId, stageId) {
+        const stage = VR_CONFIG.stages.find(s => s.id === stageId);
+        if (!stage) return;
+        const boss = bossId ? VR_CONFIG.bosses.find(b => b.id === bossId) : null;
+        this.vrCurrentBossId = bossId || null;
+        this.vrCurrentStageId = stageId;
+        this._showVrPlayersPopup(boss, stage);
+    },
+
+    _showVrPlayersPopup(boss, stage) {
+        const popup = document.getElementById('players-popup');
+        if (!popup) { this._doLaunchVrStage(boss, stage); return; }
+
+        document.getElementById('players-popup-stage-id').textContent = boss ? boss.name : 'TRAINING MODE';
+        document.getElementById('players-popup-stage-name').textContent = stage.name;
+        const typeEl = document.getElementById('players-popup-type');
+        typeEl.textContent = boss ? 'VR BOSS VARIANT' : 'VR TRAINING';
+        typeEl.style.color = 'var(--codec-green)';
+        const startBtnInner = popup.querySelector('.players-popup-start-btn .btn-inner');
+        if (startBtnInner) startBtnInner.textContent = '▶ INIZIA STAGE';
+
+        this._vrPopupMode = true;
+        this._vrPendingBoss  = boss;
+        this._vrPendingStage = stage;
+        this._popupAllPlayers = Object.keys(CHARACTERS);
+        this._popupMandatoryPlayers = [];
+        // Pre-seleziona Snake se presente, altrimenti il primo
+        const allCh = this._popupAllPlayers;
+        this._pendingSelectedPlayers = allCh.includes('Snake') ? ['Snake'] : [allCh[0]];
+        this._renderPlayersPopupList();
+        popup.style.display = 'flex';
+    },
+
+    _doLaunchVrStage(boss, stage) {
+        this.vrMode = true;
+        const players = this._pendingSelectedPlayers?.length
+            ? [...this._pendingSelectedPlayers]
+            : ['Snake'];
+        this.stagePlayers = players;
+        this._pendingSelectedPlayers = null;
+        this._popupAllPlayers = null;
+        this._vrPopupMode = false;
+
+        // Inizializza stato HP/marker (senza reset campagna)
+        this.hpState       = this.hpState       || {};
+        this.markerState   = this.markerState   || {};
+        this.playerZoneState = {};
+        players.forEach(p => {
+            const ch = CHARACTERS[p];
+            this.hpState[p] = (ch && ch.hp) ? ch.hp : 4;
+            if (!this.markerState[p]) this.markerState[p] = { alert: false, inter: false };
+            this.playerZoneState[p] = 0;
+        });
+        this.bossHpState = {};
+        this.bossMaxHpState = {};
+        this._bossSpecialBtnUsed = {};
+
+        // Header
+        const titleEl  = document.getElementById('active-stage-title');
+        const statusEl = document.getElementById('stage-status');
+        if (titleEl)  titleEl.textContent  = boss ? `${boss.name} — ${stage.name}` : stage.name;
+        if (statusEl) statusEl.textContent = boss ? 'VR BOSS VARIANT' : 'VR TRAINING';
+
+        // Nasconde sezioni campagna non pertinenti
+        ['video-section', 'turn-section'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+        });
+
+        // NEXT button
+        const btnNext = document.getElementById('btn-next-stage');
+        const idx = VR_CONFIG.stages.findIndex(s => s.id === stage.id);
+        const hasNext = idx < VR_CONFIG.stages.length - 1;
+        if (btnNext) {
+            if (hasNext) {
+                btnNext.style.display = '';
+                btnNext.disabled = true;
+                btnNext.style.opacity = '0.3';
+                btnNext.querySelector('.btn-inner').textContent = 'NEXT ▶';
+            } else {
+                btnNext.style.display = 'none';
+            }
+        }
+
+        // Back button
+        const backBtn = document.getElementById('btn-stage-back');
+        if (backBtn) backBtn.textContent = '◄ VR';
+
+        // Sidebar giocatori (senza stats sessione, con equipment condiviso)
+        // In Boss Variant aggiunge il boss come riga HP in cima
+        const sidebar = document.getElementById('player-sidebar');
+        if (sidebar) {
+            let bossHtml = '';
+            if (boss) {
+                const bossHp = boss.hp || 4;
+                this.bossHpState[boss.id] = bossHp;
+                this.bossMaxHpState[boss.id] = bossHp;
+                bossHtml = this._buildVrBossHpCard(boss);
+            }
+            sidebar.innerHTML = bossHtml + players.map(p => this._buildPlayerCard(p)).join('');
+            sidebar.style.display = 'flex';
+        }
+
+        const vrCompleteSection = document.getElementById('vr-complete-section');
+        if (vrCompleteSection) vrCompleteSection.style.display = '';
+
+        this.showScreen('stage-active');
+
+        if (stage.objective) {
+            setTimeout(() => this._vrShowTypewriterIntro(stage.objective), 300);
+        }
+    },
+
+    _buildVrBossHpCard(boss) {
+        const hp    = this.bossHpState[boss.id]  ?? boss.hp ?? 4;
+        const maxHp = this.bossMaxHpState[boss.id] ?? boss.hp ?? 4;
+        const pips = Array.from({ length: maxHp }, (_, i) =>
+            `<span class="hp-pip${i < hp ? ' hp-pip-full' : ''}"></span>`
+        ).join('');
+        return `<div class="player-card vr-boss-card" id="vr-boss-card-${boss.id}">
+            <div class="player-card-header">
+                <span class="player-name">${boss.name}</span>
+                <span class="player-role vr-boss-role">BOSS</span>
+            </div>
+            <div class="player-hp-row">
+                <span class="hp-label">HP</span>
+                <div class="hp-pips">${pips}</div>
+                <span class="hp-value">${hp}/${maxHp}</span>
+            </div>
+            <div class="player-card-actions">
+                <button class="btn btn-sm btn-danger" onclick="App._vrBossHit('${boss.id}')">
+                    <span class="btn-inner">- HP</span>
+                </button>
+                <button class="btn btn-sm btn-heal" onclick="App._vrBossHeal('${boss.id}')">
+                    <span class="btn-inner">+ HP</span>
+                </button>
+            </div>
+        </div>`;
+    },
+
+    _vrBossHit(bossId) {
+        const boss = VR_CONFIG.bosses.find(b => b.id === bossId);
+        if (!boss) return;
+        const current = this.bossHpState[bossId] ?? boss.hp ?? 4;
+        if (current <= 0) return;
+        this.bossHpState[bossId] = current - 1;
+        if (boss.hitSound) {
+            const audio = new Audio(boss.hitSound);
+            audio.volume = this._sfxVol();
+            audio.play().catch(() => {});
+        }
+        this._refreshVrBossCard(bossId);
+    },
+
+    _vrBossHeal(bossId) {
+        const boss = VR_CONFIG.bosses.find(b => b.id === bossId);
+        if (!boss) return;
+        const current = this.bossHpState[bossId] ?? 0;
+        const max = this.bossMaxHpState[bossId] ?? boss.hp ?? 4;
+        if (current >= max) return;
+        this.bossHpState[bossId] = current + 1;
+        this._refreshVrBossCard(bossId);
+    },
+
+    _refreshVrBossCard(bossId) {
+        const boss = VR_CONFIG.bosses.find(b => b.id === bossId);
+        if (!boss) return;
+        const card = document.getElementById(`vr-boss-card-${bossId}`);
+        if (!card) return;
+        const hp  = this.bossHpState[bossId] ?? 0;
+        const max = this.bossMaxHpState[bossId] ?? boss.hp ?? 4;
+        const pips = card.querySelector('.hp-pips');
+        const val  = card.querySelector('.hp-value');
+        if (pips) pips.innerHTML = Array.from({ length: max }, (_, i) =>
+            `<span class="hp-pip${i < hp ? ' hp-pip-full' : ''}"></span>`
+        ).join('');
+        if (val) val.textContent = `${hp}/${max}`;
+        if (hp <= 0 && boss.koSound) {
+            const audio = new Audio(boss.koSound);
+            audio.volume = this._sfxVol();
+            audio.play().catch(() => {});
+        }
+    },
+
+    _vrShowTypewriterIntro(text) {
+        const overlay = document.getElementById('vr-intro-overlay');
+        const textEl  = document.getElementById('vr-intro-text');
+        if (!overlay || !textEl) return;
+        textEl.textContent = '';
+        overlay.style.display = 'flex';
+        if (this._vrTypewriterTimer) clearInterval(this._vrTypewriterTimer);
+        let i = 0;
+        this._vrTypewriterTimer = setInterval(() => {
+            textEl.textContent += text[i];
+            i++;
+            if (i >= text.length) {
+                clearInterval(this._vrTypewriterTimer);
+                this._vrTypewriterTimer = null;
+            }
+        }, 28);
+    },
+
+    vrIntroConfirm() {
+        if (this._vrTypewriterTimer) {
+            clearInterval(this._vrTypewriterTimer);
+            this._vrTypewriterTimer = null;
+            const boss = VR_CONFIG.bosses.find(b => b.id === this.vrCurrentBossId);
+            const stage = boss?.stages.find(s => s.id === this.vrCurrentStageId);
+            if (stage) document.getElementById('vr-intro-text').textContent = stage.objective;
+            return; // primo click: completa il testo; secondo click: chiude
+        }
+        document.getElementById('vr-intro-overlay').style.display = 'none';
+    },
+
+    vrCompleteStage() {
+        const key = this.vrCurrentBossId
+            ? `boss_${this.vrCurrentBossId}_${this.vrCurrentStageId}`
+            : `training_${this.vrCurrentStageId}`;
+        if (!this.session.vrCompleted) this.session.vrCompleted = {};
+        this.session.vrCompleted[key] = true;
+        this._vrSaveProgress();
+
+        // Abilita NEXT se esiste
+        const btnNext = document.getElementById('btn-next-stage');
+        if (btnNext && btnNext.style.display !== 'none') {
+            btnNext.disabled = false;
+            btnNext.style.opacity = '1';
+        }
+
+        // Mostra popup completion
+        this._vrShowCompletionPopup();
+    },
+
+    _vrShowCompletionPopup() {
+        const pct = this._vrProgress(this.session);
+        const overlay = document.getElementById('vr-completion-popup');
+        if (!overlay) return;
+        const pctEl = document.getElementById('vr-completion-pct');
+        if (pctEl) pctEl.textContent = pct + '%';
+        overlay.style.display = 'flex';
+    },
+
+    vrCompletionClose() {
+        document.getElementById('vr-completion-popup').style.display = 'none';
+    },
+
+    _vrSaveProgress() {
+        if (!this.vrLoadedCard || !this.vrLoadedBlock) return;
+        const card = this._getCard(this.vrLoadedCard);
+        if (card[this.vrLoadedBlock]) {
+            card[this.vrLoadedBlock].vrCompleted = { ...this.session.vrCompleted };
+            this._setCard(this.vrLoadedCard, card);
+        }
+        this._persistSession();
+    },
+
+    _exitVrStage() {
+        this.vrMode = false;
+        document.getElementById('vr-intro-overlay').style.display = 'none';
+        document.getElementById('vr-completion-popup').style.display = 'none';
+        if (this._vrTypewriterTimer) { clearInterval(this._vrTypewriterTimer); this._vrTypewriterTimer = null; }
+        // Ripristina back button
+        const backBtn = document.getElementById('btn-stage-back');
+        if (backBtn) backBtn.textContent = '◄ MENU';
+        // Ripristina NEXT
+        const btnNext = document.getElementById('btn-next-stage');
+        if (btnNext) { btnNext.style.display = 'none'; btnNext.disabled = true; btnNext.style.opacity = '0.3'; }
+        const vrCompleteSection = document.getElementById('vr-complete-section');
+        if (vrCompleteSection) vrCompleteSection.style.display = 'none';
+        // Ripristina sezioni
+        ['video-section', 'turn-section'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = '';
+        });
+    },
+
+    // ============================================
+    // OPTION SCREEN
+    // ============================================
+    _initOptionScreen() {
+        const q = id => document.getElementById(id);
+        const musicSlider = q('opt-music-vol');
+        if (musicSlider) { musicSlider.value = this.defaultMusicVolume; this._optUpdateVal('opt-music-val', this.defaultMusicVolume); }
+        const sfxSlider = q('opt-sfx-vol');
+        if (sfxSlider) { sfxSlider.value = this.sfxVolume; this._optUpdateVal('opt-sfx-val', this.sfxVolume); }
+        const menuSlider = q('opt-menu-vol');
+        if (menuSlider) { menuSlider.value = this.menuMusicVolume; this._optUpdateVal('opt-menu-val', this.menuMusicVolume); }
+        const statsToggle = q('opt-session-stats');
+        if (statsToggle) statsToggle.checked = this.showSessionStats;
+        const vrToggle = q('opt-vr-unlock');
+        if (vrToggle) vrToggle.checked = this.vrUnlockAll;
+    },
+
+    _optUpdateVal(id, val) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val;
+    },
+
+    setOptMusicVol(val) {
+        this.defaultMusicVolume = parseInt(val);
+        this._optUpdateVal('opt-music-val', val);
+        if (this.musicLoop) this.musicLoop.setVolume(val / 100);
+        const stageSlider = document.getElementById('music-volume');
+        if (stageSlider) stageSlider.value = val;
+    },
+
+    setOptSfxVol(val) {
+        this.sfxVolume = parseInt(val);
+        this._optUpdateVal('opt-sfx-val', val);
+    },
+
+    setOptMenuVol(val) {
+        this.menuMusicVolume = parseInt(val);
+        this._optUpdateVal('opt-menu-val', val);
+        if (this.menuMusicLoop) this.menuMusicLoop.setVolume(val / 100);
+    },
+
+    setOptSessionStats(checked) {
+        this.showSessionStats = checked;
+        const block = document.querySelector('.session-stats-block');
+        if (block) block.outerHTML = this._buildSessionStatsHtml();
+    },
+
+    setOptVrUnlock(checked) {
+        this.vrUnlockAll = checked;
+        // Se il menu VR stage list è visibile, aggiorna
+        if (this.vrNav?.level === 'stagelist') {
+            this._renderVrContent();
+        }
+    },
 };
 
 document.addEventListener('DOMContentLoaded', () => {

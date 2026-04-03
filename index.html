@@ -83,22 +83,19 @@
         </div>
     </div>
 
-    <!-- VR TRAINING SCREEN (placeholder) -->
+    <!-- VR TRAINING SCREEN -->
     <div id="vr-screen" class="screen">
         <div class="screen-header">
-            <button class="btn-back" onclick="App.playMenuReturn(); App.showScreen('main-menu')">
-                ◄ MENU
-            </button>
+            <button class="btn-back" onclick="App.vrBack()">◄ MENU</button>
             <div class="header-left">
                 <span class="header-icon">◆</span>
                 <span class="header-title">VR TRAINING</span>
             </div>
         </div>
-        <div class="placeholder-screen">
-            <div class="placeholder-icon">◆</div>
-            <div class="placeholder-text">IN COSTRUZIONE</div>
-            <div class="placeholder-sub">Le missioni VR saranno disponibili prossimamente</div>
-        </div>
+        <!-- Breadcrumb navigazione -->
+        <div class="vr-breadcrumb-bar" id="vr-breadcrumb-bar"></div>
+        <!-- Contenuto VR (lista boss / stage / training) -->
+        <div class="vr-menu-content" id="vr-menu-content"></div>
     </div>
 
     <!-- STAGE SELECT SCREEN (LOAD GAME) -->
@@ -160,6 +157,7 @@
             <div class="equipment-popup-box">
                 <div class="equipment-popup-title">EQUIPAGGIAMENTO</div>
                 <div class="equipment-popup-subtitle">Scegli l'equipaggiamento per questa missione</div>
+                <div id="equipment-popup-notice" class="equipment-popup-notice" style="display:none"></div>
                 <div id="equipment-popup-content" class="equipment-popup-content"></div>
                 <button class="btn-codec equipment-confirm-btn" onclick="App.confirmEquipmentPopup()">
                     <span class="btn-inner">▶ INIZIA MISSIONE</span>
@@ -222,11 +220,37 @@
             </div>
         </div>
 
+        <!-- Game Over Confirm Popup -->
+        <div id="gameover-confirm-popup" class="enemy-phase-popup-overlay" style="display:none">
+            <div class="enemy-phase-popup-box">
+                <div class="enemy-phase-popup-text" style="margin-bottom:1rem">È stata rivelata la carta<br><strong>GAME OVER</strong>?</div>
+                <div style="display:flex;gap:0.75rem;justify-content:center">
+                    <button class="btn-codec" autofocus onclick="App.cancelGameOverConfirm()">
+                        <span class="btn-inner">NO</span>
+                    </button>
+                    <button class="btn-codec btn-video" onclick="App.confirmGameOver()">
+                        <span class="btn-inner">SÌ</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <!-- Missile Popup (ostacolo / colpisce) -->
         <div id="missile-popup" class="enemy-phase-popup-overlay" style="display:none">
             <div class="enemy-phase-popup-box">
                 <div id="missile-popup-text" class="enemy-phase-popup-text"></div>
                 <div id="missile-popup-buttons" style="display:flex;gap:0.5rem;margin-top:0.5rem"></div>
+            </div>
+        </div>
+
+        <!-- Selezione segnalini azione extra per attacchi (es. LANCIA stage 14) -->
+        <div id="token-attack-popup" class="enemy-phase-popup-overlay" style="display:none">
+            <div class="enemy-phase-popup-box">
+                <div class="enemy-phase-popup-text">Segnalini azione<br><span style="font-size:0.8rem;opacity:0.7">Quanti vuoi usare?</span></div>
+                <div id="token-attack-btns" style="display:flex;flex-wrap:wrap;gap:0.5rem;justify-content:center;margin-top:0.5rem"></div>
+                <div style="margin-top:0.5rem">
+                    <button class="btn-codec" onclick="document.getElementById('token-attack-popup').style.display='none'"><span class="btn-inner">ANNULLA</span></button>
+                </div>
             </div>
         </div>
 
@@ -290,6 +314,45 @@
             </div>
         </div>
 
+        <!-- Enemy Down Popup (KO o Uccisa?) -->
+        <div id="enemy-down-popup" class="enemy-phase-popup-overlay" style="display:none">
+            <div class="enemy-phase-popup-box">
+                <div class="enemy-phase-popup-text">Guardia sconfitta:<br><span style="font-size:0.8rem;opacity:0.7">KO o uccisa?</span></div>
+                <div style="display:flex;gap:0.75rem;justify-content:center;margin-top:0.5rem">
+                    <button class="btn-codec" onclick="App.confirmEnemyDown(false)">
+                        <span class="btn-inner">KO</span>
+                    </button>
+                    <button class="btn-codec btn-video" onclick="App.confirmEnemyDown(true)">
+                        <span class="btn-inner">UCCISA</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- VR Intro Typewriter -->
+        <div id="vr-intro-overlay" class="vr-intro-overlay" style="display:none">
+            <div class="vr-intro-box">
+                <div class="vr-intro-title">◆ OBIETTIVO</div>
+                <div class="vr-intro-text" id="vr-intro-text"></div>
+                <button class="btn-codec vr-intro-btn" onclick="App.vrIntroConfirm()">
+                    <span class="btn-inner">▶ OK</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- VR Stage Completion -->
+        <div id="vr-completion-popup" class="vr-intro-overlay" style="display:none">
+            <div class="vr-intro-box">
+                <div class="vr-intro-title">✓ STAGE COMPLETATO</div>
+                <div class="vr-completion-body">
+                    PROGRESSO TOTALE: <span id="vr-completion-pct">0%</span>
+                </div>
+                <button class="btn-codec vr-intro-btn" onclick="App.vrCompletionClose()">
+                    <span class="btn-inner">▶ OK</span>
+                </button>
+            </div>
+        </div>
+
         <!-- Enemy Phase Popup -->
         <div id="enemy-phase-popup" class="enemy-phase-popup-overlay" style="display:none">
             <div class="enemy-phase-popup-box">
@@ -334,6 +397,13 @@
             <div class="turn-content" id="turn-content">
                 <!-- Generated by JS -->
             </div>
+        </div>
+
+        <!-- VR Complete Button (visibile solo in vrMode) -->
+        <div id="vr-complete-section" style="display:none;padding:0.75rem 1rem;border-bottom:1px solid var(--border-green)">
+            <button class="btn-codec btn-video" onclick="App.vrCompleteStage()" style="width:100%">
+                <span class="btn-inner">✓ COMPLETA STAGE</span>
+            </button>
         </div>
 
         <!-- Soundboard Section -->
@@ -435,6 +505,140 @@
         </div>
     </div>
 
+    <!-- SCORE SCREEN -->
+    <div id="score-screen" class="screen">
+        <div class="score-container">
+            <!-- Video dentro la box, fade-out a fine video -->
+            <video id="score-video-player" playsinline></video>
+
+            <!-- Stats sotto il video (rivelate al fade-out) -->
+            <div id="score-static">
+                <div class="score-stats" id="score-stats"></div>
+                <div class="score-codename-row" id="score-codename-row"></div>
+                <div class="score-special-section" id="score-special-section"></div>
+            </div>
+        </div>
+
+        <div class="score-back-btn" id="score-back-btn">
+            <button class="btn-codec btn-video" onclick="App.promptScoreSave()">
+                <span class="btn-inner">AVANTI ►</span>
+            </button>
+        </div>
+
+        <!-- Popup salvataggio score -->
+        <div id="score-save-popup" class="enemy-phase-popup-overlay" style="display:none">
+            <div class="enemy-phase-popup-box">
+                <div class="enemy-phase-popup-text">Vuoi salvare?</div>
+                <div style="display:flex;gap:0.75rem;justify-content:center;margin-top:0.5rem">
+                    <button class="btn-codec btn-video" onclick="App.saveFromScoreScreen()">
+                        <span class="btn-inner">SALVA</span>
+                    </button>
+                    <button class="btn-codec" onclick="App.skipScoreSave()">
+                        <span class="btn-inner">NON SALVARE</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- OPTION SCREEN -->
+    <div id="option-screen" class="screen">
+        <div class="menu-bg">
+            <div class="menu-circuit-bg"></div>
+            <div class="option-container">
+                <div class="option-title-box">OPTION</div>
+
+                <div class="option-row">
+                    <div class="option-label">MUSICA</div>
+                    <div class="option-control">
+                        <input type="range" class="option-slider" id="opt-music-vol"
+                            min="0" max="100" value="15"
+                            oninput="App.setOptMusicVol(this.value)">
+                        <span class="option-val" id="opt-music-val">15</span>
+                    </div>
+                </div>
+
+                <div class="option-row">
+                    <div class="option-label">EFFETTI SONORI</div>
+                    <div class="option-control">
+                        <input type="range" class="option-slider" id="opt-sfx-vol"
+                            min="0" max="100" value="85"
+                            oninput="App.setOptSfxVol(this.value)">
+                        <span class="option-val" id="opt-sfx-val">85</span>
+                    </div>
+                </div>
+
+                <div class="option-row">
+                    <div class="option-label">MUSICA MENU</div>
+                    <div class="option-control">
+                        <input type="range" class="option-slider" id="opt-menu-vol"
+                            min="0" max="100" value="35"
+                            oninput="App.setOptMenuVol(this.value)">
+                        <span class="option-val" id="opt-menu-val">35</span>
+                    </div>
+                </div>
+
+                <div class="option-divider"></div>
+
+                <div class="option-row option-row-toggle">
+                    <div class="option-label">
+                        DATI SESSIONE
+                        <div class="option-sublabel">I dati vengono tracciati anche quando disattivati</div>
+                    </div>
+                    <label class="option-toggle">
+                        <input type="checkbox" id="opt-session-stats"
+                            onchange="App.setOptSessionStats(this.checked)">
+                        <span class="option-toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="option-row option-row-toggle">
+                    <div class="option-label">
+                        SBLOCCA LIVELLI VR
+                        <div class="option-sublabel">Rende disponibili tutti gli stage VR senza requisiti</div>
+                    </div>
+                    <label class="option-toggle">
+                        <input type="checkbox" id="opt-vr-unlock"
+                            onchange="App.setOptVrUnlock(this.checked)">
+                        <span class="option-toggle-slider"></span>
+                    </label>
+                </div>
+
+                <button class="btn-codec option-back-btn" onclick="App.playMenuReturn(); App.showScreen('main-menu')">
+                    <span class="btn-inner">◄ MENU</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CREDITS SCREEN -->
+    <div id="credits-screen" class="screen">
+        <div class="menu-bg">
+            <div class="menu-circuit-bg"></div>
+            <div class="credits-container">
+                <div class="credits-title">MGS BOARD GAME<br><span class="credits-subtitle">COMPANION APP</span></div>
+                <div class="credits-divider"></div>
+                <div class="credits-block">
+                    <div class="credits-role">DESIGN &amp; SVILUPPO</div>
+                    <div class="credits-name">Michael Pace</div>
+                </div>
+                <div class="credits-block">
+                    <div class="credits-role">BASATO SU</div>
+                    <div class="credits-name">Metal Gear Solid — The Board Game</div>
+                    <div class="credits-sub">Konami Digital Entertainment</div>
+                </div>
+                <div class="credits-block">
+                    <div class="credits-role">MUSICA ORIGINALE</div>
+                    <div class="credits-name">Tappy Iwase · Harry Gregson-Williams</div>
+                </div>
+                <div class="credits-footer">METAL GEAR SOLID™ © KONAMI</div>
+                <button class="btn-codec option-back-btn" onclick="App.playMenuReturn(); App.showScreen('main-menu')">
+                    <span class="btn-inner">◄ MENU</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- AUDIO ELEMENTS (created dynamically by JS) -->
 
     <!-- Popup causa alert -->
@@ -463,6 +667,7 @@
     <div id="action-tooltip" class="action-tooltip-popup" style="display:none" onmouseleave="App.hideActionTooltip()"></div>
 
     <script src="js/config.js"></script>
+    <!-- VR_CONFIG è definito alla fine di config.js -->
     <script src="js/stages.js"></script>
     <script src="js/characters.js"></script>
     <script src="js/equipment.js"></script>
