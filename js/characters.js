@@ -316,6 +316,7 @@ const CHARACTERS = {
     },
 
     "Gray Fox": {
+        displayName: "FOX",
         hp: 4,
         hurtSound:     'audio/sfx/ninja/ferito.wav',
         hurtPlusSound: 'audio/sfx/ninja/ferito+.wav',

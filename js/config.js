@@ -26,7 +26,7 @@ const CONFIG = {
         "encounter":    { name: "Encounter",       file: "audio/music/Encounter.mp3",       introStart: 0,     loopStart: 1.069,  loopEnd: 48.312  },
 		"encounter-vr":    { name: "Encounter-Vr",       file: "audio/music/Encounter-Vr.mp3",       introStart: 0,     loopStart: 0.300,  loopEnd: 29.900  },
         "evasion":      { name: "Evasion",         file: "audio/music/Evasion.mp3",         introStart: 0,     loopStart: 77.500, loopEnd: 127.431 },
-		"evasion-vr":      { name: "Evasion-Vr",         file: "audio/music/Evasion-Vr.mp3",         introStart: 0,     loopStart: 96.055, loopEnd: 127.845 },
+		"evasion-vr":      { name: "Evasion-Vr",         file: "audio/music/Evasion-Vr.mp3",         introStart: 0.800,     loopStart: 96.055, loopEnd: 127.845 },
         "cavern":       { name: "Cavern",          file: "audio/music/Cavern.mp3",          introStart: 0,     loopStart: 0.822,  loopEnd: 92.806  },
         "intruder-1":   { name: "Intruder 1",      file: "audio/music/Intruder_1.mp3",      introStart: 0,     loopStart: 0.740,  loopEnd: 65.880  },
         "intruder-2":   { name: "Intruder 2",      file: "audio/music/Intruder_2.mp3",      introStart: 0,     loopStart: 22.750, loopEnd: 90.830  },
@@ -37,8 +37,9 @@ const CONFIG = {
         "arctic-wind":  { name: "Vento Artico",    file: "audio/music/arctic-wind.mp3",     introStart: 24874, loopStart: 24.874, loopEnd: 109.323 },
 		"furnace":      { name: "Blast Furnace", file: "audio/music/Blast_Furnace.mp3", 	introStart: 0,     loopStart: 70.522, loopEnd: 146.689 },
 		"rex-lair":      { name: "Rex Lair", file: "audio/music/Rex_Lair.mp3", 				introStart: 0,     loopStart: 57.100, loopEnd: 153.500 },
-		"mission-vr":      { name: "Mission-Vr",         file: "audio/music/Mission-Vr.mp3",         introStart: 0,     loopStart: 51.115, loopEnd: 135.751 },
-		"ninja-vr":      { name: "Ninja-Vr",         file: "audio/music/Ninja-Vr.mp3",         introStart: 0,     loopStart: 67.224, loopEnd: 126.846 },
+		"mission-vr-training": { name: "Mission-Vr-Training",  file: "audio/music/Mission-Vr-Training.mp3", introStart: 0, loopStart: 63.990, loopEnd: 127.350},
+		"mission-vr-boss":     { name: "Mission-Vr-Boss",      file: "audio/music/Mission-Vr-Boss.mp3",     introStart: 0, loopStart: 51.115, loopEnd: 135.751 },
+		"ninja-vr":            { name: "Ninja-Vr",             file: "audio/music/Ninja-Vr.mp3",            introStart: 0, loopStart: 67.224, loopEnd: 126.846 },
     },
 
     // ============================================
@@ -49,6 +50,32 @@ const CONFIG = {
         "confirm":      { name: "Confirm",      file: "audio/sfx/confirm.mp3"      },
         "confirm-save": { name: "Confirm Save", file: "audio/sfx/confirm-save.mp3" },
         "return":       { name: "Return",       file: "audio/sfx/return.mp3"       },
+    },
+
+    // ============================================
+    // SUONI VR TRAINING
+    // ============================================
+    vrSounds: {
+        "confirm":       { file: "audio/sfx/vr-mission/confirm.wav"       },
+        "return":        { file: "audio/sfx/vr-mission/return.wav"          },
+        "jingle-inizio":       { file: "audio/sfx/vr-mission/jingle-inizio.mp3"       },
+        "preinizio":           { file: "audio/sfx/vr-mission/preinizio.wav"           },
+        "inizio":              { file: "audio/sfx/vr-mission/inizio.wav"              },
+        "generazione-uscita":  { file: "audio/sfx/vr-mission/generazione-uscita.wav"  },
+        "jingle-fine":         { file: "audio/sfx/vr-mission/jingle-fine.mp3"         },
+        "prefine":             { file: "audio/sfx/vr-mission/prefine.wav"             },
+        "vr-mission-1":        { file: "audio/sfx/vr-mission/vr-mission-1.wav"        },
+        "vr-mission-2":        { file: "audio/sfx/vr-mission/vr-mission-2.wav"        },
+        "vr-mission-3":        { file: "audio/sfx/vr-mission/vr-mission-3.wav"        },
+        "vr-mission-4":        { file: "audio/sfx/vr-mission/vr-mission-4.wav"        },
+        "tempo-poco":          { file: "audio/sfx/vr-mission/tempo-poco.wav"          },
+        "tempo-scaduto":       { file: "audio/sfx/vr-mission/tempo-scaduto.wav"       },
+        "elenco":              { file: "audio/sfx/vr-mission/elenco.wav"              },
+        "rank":                { file: "audio/sfx/vr-mission/rank.wav"                },
+        "fine":                { file: "audio/sfx/vr-mission/fine.wav"                },
+        "vr-mission-conclusione": { file: "audio/sfx/vr-mission/vr-mission-conclusione.wav", volume: 1.0 },
+        "oggetto-preso":  { file: "audio/sfx/oggetto-preso.wav"  },
+        "oggetto-spawn":  { file: "audio/sfx/oggetto-spawn.wav"  },
     },
 
     // ============================================
@@ -68,7 +95,7 @@ const CONFIG = {
     gameOverSoundsPath: "audio/sfx/game-over/",
     gameOverSounds: [
         "01","02","03","04","05","06","07","08","09",
-        "10","11","12","13","14","15","16","17","18",
+        "10","11","12","13","14","15","16","17","18","19",
     ],
     // Timing personalizzato per suoni specifici (secondi nel video game over).
     // Default: 4. Abbassare per far partire prima.
@@ -124,51 +151,49 @@ const CONFIG = {
 // VR TRAINING CONFIG
 // ============================================
 const VR_CONFIG = {
-    stageProgress: 2.7,  // % per stage completato
+    stageProgress: 2.4,  // % per completamento (qualsiasi stage × qualsiasi modalità)
 
-    // Le 6 missioni VR sono condivise tra Training Mode e Boss Variant.
-    // Configurare qui una volta sola: name e objective per ogni stage.
-    stages: [
-        { id: 1, name: 'STAGE 01', objective: '' },
-        { id: 2, name: 'STAGE 02', objective: '' },
-        { id: 3, name: 'STAGE 03', objective: '' },
-        { id: 4, name: 'STAGE 04', objective: '' },
-        { id: 5, name: 'STAGE 05', objective: '' },
-        { id: 6, name: 'STAGE 06', objective: '' },
-    ],
+    // Popolato da stages.js dopo il caricamento (VR_STAGES con vrStage: true)
+    stages: [],
 
     // Boss Variant: ogni boss ha nome e suoni ferito/morte.
     // Le missioni sono le stesse 6 di stages[] sopra, con il boss presente.
     bosses: [
         {
             id: 'ocelot', name: 'OCELOT',
-            hp: 4,
+            hpByPlayerCount: { 1: 5, 2: 8, 3: 11, 4: 14 },
             hitSound: "audio/sfx/ocelot/ocelot-colpito.wav",
             koSound:  "audio/sfx/ocelot/ocelot-ko.wav",
+            rewardEquip: '026',
         },
         {
             id: 'mantis', name: 'MANTIS',
-            hp: 4,
+            hpByPlayerCount: { 1: 6, 2: 9, 3: 12, 4: 15 },
             hitSound: "audio/sfx/mantis/ferito.wav",
             koSound:  "audio/sfx/mantis/morte.wav",
+            rewardEquip: '014',
         },
         {
             id: 'wolf', name: 'WOLF',
-            hp: 4,
+            hpByPlayerCount: { 1: 5, 2: 8, 3: 11, 4: 14 },
             hitSound: "audio/sfx/wolf/ferito1.wav",
             koSound:  "audio/sfx/wolf/morte.wav",
+            rewardEquip: '019',
         },
         {
             id: 'raven', name: 'RAVEN',
-            hp: 4,
+            hpByPlayerCount: { 1: 6, 2: 10, 3: 14, 4: 18 },
             hitSound: "audio/sfx/raven/ferito+.wav",
             koSound:  "audio/sfx/raven/morte.wav",
+            rewardEquip: '027',
         },
         {
             id: 'liquid', name: 'LIQUID',
-            hp: 4,
-            hitSound: "audio/sfx/liquid/ferito.wav",
-            koSound:  "audio/sfx/liquid/morte.wav",
+            hpByPlayerCount: { 1: 2, 2: 3, 3: 4, 4: 5 },
+            hitSound:    "audio/sfx/liquid/ferito.wav",
+            hitSoundAlt: "audio/sfx/liquid/ferito+.wav",
+            koSound:     "audio/sfx/liquid/morte.wav",
+            rewardEquip: '025',
         },
     ],
 };

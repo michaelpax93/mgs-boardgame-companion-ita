@@ -64,10 +64,12 @@ const STAGES = [
         type: "SNEAKING MISSION",
         isBoss: false,
         players: ["Snake"],
+        actionSoundOverrides: { 'movimento-furtivo': 'audio/azioni/snake/movimento-furtivo-neve.wav', 'scatto': 'audio/azioni/snake/scatto-neve.wav' },
         description: "Attraversamento dell'eliporto",
         intro: "video/stage_02_intro.mp4",
         outro: "video/stage_02_outro.mp4",
         hasCameras: true,
+        cameraStartColor: 'green',
         enemies: [4],
         radioEnemies: [5],
         musicIds: ["arctic-wind"],
@@ -196,6 +198,7 @@ const STAGES = [
         type: "BOSS BATTLE",
         isBoss: true,
         players: ["Snake", "Meryl"],
+        actionSoundOverrides: { 'movimento-furtivo': 'audio/azioni/snake/movimento-furtivo-neve.wav', 'scatto': 'audio/azioni/snake/scatto-neve.wav' },
         description: "Imboscata del carro armato M1",
         intro: "video/stage_05_intro.mp4",
         outro: "video/stage_05_outro.mp4",
@@ -209,7 +212,7 @@ const STAGES = [
         bossEnemies: [
             {
                 id: "carro-armato",
-                name: "CARRO ARMATO M1",
+                name: "GUNNER",
                 hpByPlayerCount: { 1: 20, 2: 40 },
                 damageFrom: ["grenade", "mine", "missile"],
                 hitSound: "audio/sfx/carroarmato/ferito.wav",
@@ -292,7 +295,7 @@ const STAGES = [
         bossEnemies: [
             {
                 id: "ninja",
-                name: "CYBORG NINJA",
+                name: "NINJA",
                 hpByPlayerCount: { 1: 12, 2: 24 },
                 damageFrom: ["melee"],
                 attackSound: "audio/azioni/ninja/attacco-combo.wav",
@@ -387,7 +390,7 @@ mantisShakes: [
         bossEnemies: [
             {
                 id: "mantis",
-                name: "PSYCHO MANTIS",
+                name: "MANTIS",
                 hpByPlayerCount: { 1: 15, 2: 30 },
                 defense: 12,
                 defensePopup: true,
@@ -485,7 +488,7 @@ mantisShakes: [
         bossEnemies: [
             {
                 id: "elicottero",
-                name: "ELICOTTERO DA GUERRA",
+                name: "HIND",
                 hpByPlayerCount: { 1: 12, 2: 24, 3: 30, 4: 35 },
                 damageFrom: ["sam"],
                 damageSelectorPopup: true,
@@ -514,6 +517,8 @@ mantisShakes: [
         isBoss: true,
         otaconHybrid: true,
         players: ["Snake", "Meryl", "Otacon", "Gray Fox"],
+        actionSoundOverrides: { 'movimento-furtivo': 'audio/azioni/snake/movimento-furtivo-neve.wav', 'scatto': 'audio/azioni/snake/scatto-neve.wav' },
+        actionSoundOverridesExclude: ['Otacon'],
         description: "Duello con Sniper Wolf",
         intro: "video/stage_11_intro.mp4",
         outro: "video/stage_11_outro.mp4",
@@ -545,7 +550,7 @@ mantisShakes: [
         bossEnemies: [
             {
                 id: "wolf",
-                name: "SNIPER WOLF",
+                name: "WOLF",
                 hp: 10,
                 hpByPlayerCount: { 1: 12, 2: 24, 3: 36 },
                 attacks: [
@@ -592,7 +597,7 @@ mantisShakes: [
         bossEnemies: [
             {
                 id: "raven",
-                name: "VULCAN RAVEN",
+                name: "RAVEN",
                 hpByPlayerCount: { 1: 14, 2: 28, 3: 38, 4: 44 },
                 playerTargetAttack: { attackSound: "audio/sfx/raven/attacco.mp3" },
                 movementHighHP: {
@@ -622,6 +627,7 @@ mantisShakes: [
         isBoss: false,
         players: ["Snake", "Meryl", "Otacon", "Gray Fox"],
         hasCamerasMinPlayers: 2,
+        cameraStartColor: 'green',
         description: "Sovrascrittura del codice PAL",
         intro: "video/stage_13_intro.mp4",
         outro: "video/stage_13_outro.mp4",
@@ -706,7 +712,7 @@ mantisShakes: [
         bossEnemies: [
             {
                 id: "rex",
-                name: "METAL GEAR REX",
+                name: "MG-REX",
                 hpByPlayerCount: { 1: 15, 2: 30, 3: 40, 4: 50 },
                 damageFrom: ["missile", "cannon"],
                 hitLeadSound: "audio/sfx/rex/metal-gear-colpito.wav",
@@ -728,3 +734,181 @@ mantisShakes: [
         ],
     },
 ];
+
+// ============================================
+// VR TRAINING STAGES
+// Configurati come stage normali con vrStage: true.
+// Popolano VR_CONFIG.stages al caricamento.
+// ============================================
+const VR_STAGES = [
+    {
+        id: 101, name: 'RICOGNIZIONE',
+        type: 'VR MISSION', vrStage: true, vrIndex: 1,
+        isBoss: false,
+        enemies: [3, 3, 3],
+        radioEnemies: [3, 3, 3],
+        musicIds: ['mission-vr-training', 'mission-vr-training', 'mission-vr-training'],
+        musicLabels: ['Molo di Carico', 'Armeria', 'Celle della Prigione'],
+        elevator: 'audio/sfx/porta.wav',
+        hasCameras: true,
+        cameraStartColor: 'green',
+        events: [
+            { id: 'vr01_zone0', label: 'Molo di Carico',      sound: 'audio/sfx/oggetto-preso.wav', requiresZone: 0, multiClick: true, maxCount: 1, requiredForOutro: true },
+            { id: 'vr01_zone1', label: 'Armeria',              sound: 'audio/sfx/oggetto-preso.wav', requiresZone: 1, multiClick: true, maxCount: 4, requiredForOutro: true },
+            { id: 'vr01_zone2', label: 'Celle della Prigione', sound: 'audio/sfx/oggetto-preso.wav', requiresZone: 2, multiClick: true, maxCount: 3, requiredForOutro: true },
+        ],
+        objective: [
+            'Raccogli 2 obiettivi e raggiungi l\'uscita con almeno 1 giocatore.',
+            'Raccogli 3 obiettivi e raggiungi l\'uscita con almeno 1 giocatore.',
+            'Raccogli 5 obiettivi e raggiungi l\'uscita con almeno 1 giocatore.',
+            'Raccogli 6 obiettivi e raggiungi l\'uscita con almeno 1 giocatore.',
+        ],
+        requiredEventCount: [2, 3, 5, 6],
+        roundSoglia: 14,
+        rewardEquip: '024',
+        uscitaRequiresZone: 0,
+        players: [],
+    },
+    {
+        id: 102, name: 'FUGA',
+        type: 'VR MISSION', vrStage: true, vrIndex: 2,
+        isBoss: false,
+        enemies: [3, 3, 3],
+        radioEnemies: [3, 3, 3],
+        musicIds: ['mission-vr-training', 'mission-vr-training', 'mission-vr-training'],
+        musicLabels: ['Celle di Detenzione', 'Altoforno', 'VR01'],
+        elevator: 'audio/sfx/porta.wav',
+        hasCamerasInZones: [1, 2],
+        cameraStartColor: 'green',
+        uscitaRequiresAllInZone: 2,
+        roundSoglia: 15,
+        startInAlert: true,
+        zoneAdjacency: [[1], [0, 2], [1]],
+        objective: 'Raggiungi l\'ascensore con tutti i giocatori e interagisci con esso.',
+        rewardEquip: '012',
+        events: [],
+        players: [],
+    },
+    {
+        id: 103, name: 'SABOTAGGIO',
+        type: 'VR MISSION', vrStage: true, vrIndex: 3,
+        isBoss: false,
+        enemies: [3, 3, 3],
+        radioEnemies: [3, 3, 3],
+        musicIds: ['mission-vr-training', 'mission-vr-training', 'mission-vr-training'],
+        musicLabels: ['Deposito Nucleare - B1', 'Ufficio della Sicurezza', 'VR02'],
+        elevator: 'audio/sfx/elevetor.mp3',
+        hasCameras: true,
+        cameraStartColor: 'green',
+        roundSoglia: 15,
+        uscitaRequiresAllSameZone: true,
+        uscitaSoundEveryEnable: true,
+        uscitaRequiresNodeDisabled: [
+            { total: 2, minZones: 2 },
+            { total: 3, minPerZone: 1 },
+            { total: 4, minPerZone: 1 },
+            { minPerZone: 2 },
+        ],
+        objective: [
+            'Disattivare 2 nodi, ognuno in una zona diversa, raggiungere l\'ascensore con tutti i giocatori e interagire con esso.',
+            'Disattivare 3 nodi, 1 in ogni zona, raggiungere l\'ascensore con tutti i giocatori e interagire con esso.',
+            'Disattivare 4 nodi, almeno 1 per ogni zona, raggiungere l\'ascensore con tutti i giocatori e interagire con esso.',
+            'Disattivare 2 nodi in ogni zona, raggiungere l\'ascensore con tutti i giocatori e interagire con esso.',
+        ],
+        rewardEquip: '008',
+        events: [
+            { id: 'vr03_zone0', label: 'Deposito Nucleare - B1',  requiresZone: 0, multiClick: true, maxCount: 4, canDecrement: true },
+            { id: 'vr03_zone1', label: 'Ufficio della Sicurezza', requiresZone: 1, multiClick: true, maxCount: 4, canDecrement: true },
+            { id: 'vr03_zone2', label: 'VR02',                    requiresZone: 2, multiClick: true, maxCount: 3, canDecrement: true },
+        ],
+        players: [],
+    },
+    {
+        id: 104, name: 'FURTIVITÀ',
+        type: 'VR MISSION', vrStage: true, vrIndex: 4,
+        isBoss: false,
+        enemies: [3, 3, 3],
+        radioEnemies: [3, 3, 3],
+        musicIds: ['mission-vr-training', 'mission-vr-training', 'mission-vr-training'],
+        musicLabels: ['Molo di Carico', 'Ufficio della Sicurezza', 'Armeria'],
+        elevator: 'audio/sfx/porta.wav',
+        hasCameras: true,
+        cameraStartColor: 'orange',
+        gameOverOnKill: true,
+        roundSoglia: 15,
+        uscitaRequiresAllInZone: 0,
+        events: [
+            { id: 'vr04_zone1', label: 'Ufficio della Sicurezza', sound: 'audio/sfx/oggetto-preso.wav', requiresZone: 1, multiClick: true, maxCount: 2, requiredForOutro: true },
+            { id: 'vr04_zone2', label: 'Armeria',                 sound: 'audio/sfx/oggetto-preso.wav', requiresZone: 2, multiClick: true, maxCount: 2, requiredForOutro: true },
+        ],
+        requiredEventCount: [1, 2, 3, 4],
+        objective: [
+            'Raccogli 1 obiettivo e raggiungi l\'ascensore con tutti i giocatori e interagisci con esso.',
+            'Raccogli 2 obiettivi e raggiungi l\'ascensore con tutti i giocatori e interagisci con esso.',
+            'Raccogli 3 obiettivi e raggiungi l\'ascensore con tutti i giocatori e interagisci con esso.',
+            'Raccogli 4 obiettivi e raggiungi l\'ascensore con tutti i giocatori e interagisci con esso.',
+        ],
+        rewardEquip: '028',
+        players: [],
+    },
+    {
+        id: 105, name: 'SALVATAGGIO OSTAGGI',
+        type: 'VR MISSION', vrStage: true, vrIndex: 5,
+        isBoss: false,
+        enemies: [3, 3, 3],
+        radioEnemies: [3, 3, 3],
+        musicIds: ['mission-vr-training', 'mission-vr-training', 'mission-vr-training'],
+        musicLabels: ['Deposito Nucleare - B1', 'Deposito Nucleare - B2', 'Celle della Prigione'],
+        elevator: 'audio/sfx/elevetor.mp3',
+        hasCameras: true,
+        cameraStartColor: 'orange',
+        roundSoglia: 15,
+        uscitaRequiresAllSameZone: true,
+        events: [
+            { id: 'vr05_ostaggi', label: 'OSTAGGIO SALVATO', perPlayerLabel: 'OSTAGGI SALVATI', sound: 'audio/sfx/oggetto-preso.wav', multiClick: true, maxCount: 6, requiredForOutro: true, perPlayerCount: true, noiseDiceBonus: true },
+        ],
+        requiredEventCount: [1, 2, 3, 4],
+        objective: [
+            'Salva 1 ostaggio e raggiungi l\'ascensore con tutti i giocatori e interagisci con esso.',
+            'Salva 2 ostaggi e raggiungi l\'ascensore con tutti i giocatori e interagisci con esso.',
+            'Salva 3 ostaggi e raggiungi l\'ascensore con tutti i giocatori e interagisci con esso.',
+            'Salva 4 ostaggi e raggiungi l\'ascensore con tutti i giocatori e interagisci con esso.',
+        ],
+        rewardEquip: '029',
+        players: [],
+    },
+    {
+        id: 106, name: 'COORDINAZIONE',
+        type: 'VR MISSION', vrStage: true, vrIndex: 6,
+        isBoss: false,
+        enemies: [3, 3, 3],
+        radioEnemies: [3, 3, 3],
+        musicIds: ['mission-vr-training', 'mission-vr-training', 'mission-vr-training'],
+        musicLabels: ['Deposito Nucleare - L1', 'Altoforno', 'Sala Interrogatori'],
+        elevator: 'audio/sfx/elevetor.mp3',
+        hasCameras: true,
+        cameraStartColor: 'orange',
+        roundSoglia: 17,
+        uscitaRequiresAllPlayerEvents: true,
+        noNextButton: true,
+        completionSequence: ['vr-mission-conclusione', 'fine'],
+        completionSequenceDelay: 2000,
+        completionPreFineDelay: 1000,
+        playerStartZones: { 'Snake': 0, 'Gray Fox': 1, 'Meryl': 2, 'Otacon': 2 },
+        events: [
+            { id: 'vr06_A', label: 'INDICATORE A', sound: 'audio/sfx/oggetto-preso.wav', requiresZone: 2, playerOwner: 'Snake',    toggle: true, requiredForOutro: true },
+            { id: 'vr06_B', label: 'INDICATORE B', sound: 'audio/sfx/oggetto-preso.wav', requiresZone: 1, playerOwner: 'Meryl',    toggle: true, requiredForOutro: true },
+            { id: 'vr06_C', label: 'INDICATORE C', sound: 'audio/sfx/oggetto-preso.wav', requiresZone: 0, playerOwner: 'Gray Fox', toggle: true, requiredForOutro: true },
+            { id: 'vr06_D', label: 'INDICATORE D', sound: 'audio/sfx/oggetto-preso.wav', requiresZone: 1, playerOwner: 'Otacon',   toggle: true, requiredForOutro: true },
+        ],
+        objectiveDynamic: true,
+        objectivePrefix: 'I giocatori devono trovarsi sugli indicatori designati nello stesso turno:',
+        rewardEquip: '032',
+        players: [],
+    },
+];
+
+// Popola VR_CONFIG.stages (definito in config.js, caricato prima)
+if (typeof VR_CONFIG !== 'undefined') {
+    VR_CONFIG.stages = VR_STAGES;
+}

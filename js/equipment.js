@@ -23,6 +23,191 @@
 
 const EQUIPMENT = {
 
+    // ============================================
+    // EQUIPAGGIAMENTI DI PARTENZA DEI PERSONAGGI
+    // ============================================
+
+    "M01": {
+        name: "PISTOLA (CALIBRO .50)",
+        owner: "Meryl",
+        type: "weapon",
+        itemType: "arma a distanza",
+        itemSubtype: "pistola",
+        action: {
+            name: "SPARA",
+            cost: 1,
+            desc: "Attacca 1 bersaglio in Linea di Vista. RUMOROSA: Colloca il tuo segnalino ! sotto la tua miniatura.",
+            dice: [{ color: "white", count: 1 }],
+            alertImmediate: true,
+            attack: true,
+            attackType: "ranged",
+            targets: 1,
+            category: "pistol",
+            sound: "audio/sfx/socom.wav",
+        },
+    },
+
+    "M02": {
+        name: "FUCILE D'ASSALTO LEGGERO",
+        owner: "Meryl",
+        type: "weapon",
+        itemType: "arma a distanza",
+        itemSubtype: "fucile",
+        charges: 3,
+        action: {
+            name: "SPARA",
+            cost: 1,
+            desc: "Attacca 1 bersaglio in Linea di Vista. RUMOROSA: Colloca il tuo segnalino ! sotto la tua miniatura.",
+            dice: [{ color: "white", count: 2 }],
+            alertImmediate: true,
+            attack: true,
+            attackType: "ranged",
+            targets: 1,
+            usesCharge: true,
+            category: "rifle",
+            sound: "audio/sfx/attacco-guardia.wav",
+        },
+    },
+
+    "GF1": {
+        name: "MIMETICA OTTICA",
+        owner: "Gray Fox",
+        type: "item",
+        itemType: "tecnologia",
+        itemSubtype: "mimetica",
+        charges: 2,
+        isGear: true,
+        action: {
+            name: "ATTIVA MIMETIZZAZIONE",
+            cost: 1,
+            usesCharge: true,
+            oncePerTurn: true,
+            desc: "Scarta 1 ingranaggio. Fino alla fine del tuo turno, non collocare il tuo ! quando ti trovi in Linea di Vista di una guardia o di una telecamera. Le guardie non attaccano quando le salti.",
+            sound: "audio/sfx/mimetica.wav",
+        },
+    },
+
+    "GF2": {
+        name: "SPADA AD ALTA FREQUENZA",
+        owner: "Gray Fox",
+        type: "weapon",
+        itemType: "arma da mischia",
+        itemSubtype: "spada",
+        charges: 3,
+        isGear: true,
+        manualCharge: true,
+        inlineCharge: true,
+        action: {
+            name: "FENDENTE",
+            cost: 1,
+            desc: "Attacca tutte le miniature adiacenti. Puoi scartare 1 Ingranaggio per tirare +1 dado bianco.",
+            dice: [{ color: "white", count: 1 }],
+            attack: true,
+            attackType: "physical",
+            noHitSound: true,
+            targets: "all-adjacent",
+            category: "sword",
+            sound: "audio/azioni/ninja/katana.wav",
+            inlineChargeOnce: true,
+        },
+        passive: {
+            desc: "Quando sei il bersaglio di un attacco, puoi<br>scartare 1 Ingranaggio per applicare -1<br>a tutti i risultati dei dadi.",
+        },
+    },
+
+    "GF3": {
+        name: "CANNONE DA BRACCIO",
+        owner: "Gray Fox",
+        type: "weapon",
+        itemType: "arma a distanza",
+        itemSubtype: "cannone",
+        charges: 3,
+        isGear: true,
+        inlineCharge: true,
+        action: {
+            name: "SPARA",
+            cost: 1,
+            desc: "Attacca 1 bersaglio in Linea di Vista. Puoi scartare un qualsiasi numero di ingranaggi. Tira +1 dado bianco per ogni ingranaggio scartato. RUMOROSA: Colloca il tuo segnalino ! sotto la tua miniatura.",
+            dice: [{ color: "white", count: 1 }],
+            attack: true,
+            attackType: "ranged",
+            alertImmediate: true,
+            targets: 1,
+            category: "cannon",
+            sound: "audio/sfx/cannone-ninja.wav",
+        },
+    },
+
+    "HE1": {
+        name: "RAZIONI",
+        owner: "Otacon",
+        type: "item",
+        itemType: "oggetto",
+        itemSubtype: "consumabile",
+        consumable: true,
+        action: {
+            name: "CONSUMA",
+            cost: 1,
+            desc: "Scarta fino a 2 danni. Poi scarta questa carta.",
+            sound: "audio/sfx/Razione usata.mp3",
+            heal: 2,
+        },
+    },
+
+    "HE2": {
+        name: "MIMETICA OTTICA AVANZATA",
+        owner: "Otacon",
+        type: "item",
+        itemType: "tecnologia",
+        itemSubtype: "mimetica",
+        charges: 2,
+        actions: [
+            {
+                name: "ATTIVA MIMETIZZAZIONE",
+                cost: 1,
+                usesCharge: true,
+                oncePerTurn: true,
+                desc: "Scarta 1 ingranaggio. Fino alla fine del tuo turno, non collocare il tuo ! quando ti trovi in Linea di Vista di una guardia o di una telecamera. Le guardie non attaccano quando le salti.",
+                sound: "audio/sfx/mimetica.wav",
+            },
+            {
+                name: "RICARICA",
+                cost: 2,
+                desc: "Se non ci sono ingranaggi su questa carta, colloca 1 ingranaggio su di essa.",
+                requiresExhausted: true,
+                grantsCharge: 1,
+                sound: "audio/sfx/ricarica-ottica.wav",
+            },
+        ],
+    },
+
+    // ============================================
+    // EQUIPAGGIAMENTI SPECIALI
+    // ============================================
+
+    "E06B": {
+        name: "NIKITA",
+        type: "weapon",
+        itemType: "arma a distanza",
+        itemSubtype: "lanciarazzi",
+        stageOnly: true,   // ottenibile solo tramite evento, non selezionabile in pre-stage
+        action: {
+            name: "LANCIA",
+            cost: 1,
+            desc: "Se non ce ne sono sulla mappa, colloca 1 missile in una casella adiacente vuota. Poi tira 2 dadi neri e muovi il missile, in una singola direzione, di un numero di caselle pari al risultato di 1 dei dadi. Poi puoi fare lo stesso con l'altro risultato. Se il missile sta per muoversi contro un ostacolo o si trova nella stessa casella di una miniatura, attacca tutte le miniature entro 1 casella e in Linea di Vista. Poi rimuovi il missile. Se si muove fuori dalla mappa, rimuovi il missile. RUMOROSA: Colloca il tuo segnalino ! sotto la tua miniatura.",
+            dice: [{ color: "white", count: 3 }],
+            alertImmediate: true,
+            attack: true,
+            attackType: "ranged",
+            targets: 1,
+            category: "missile",
+        },
+    },
+
+    // ============================================
+    // EQUIPAGGIAMENTI NUMERATI
+    // ============================================
+
     "001": {
         name: "PISTOLA (CALIBRO .45)",
         type: "weapon",
@@ -151,16 +336,18 @@ const EQUIPMENT = {
         },
     },
 
-    "010": {
-        name: "SCATOLA DI CARTONE A",
+    "008": {
+        name: "CLAYMORE",
         type: "item",
-        itemType: "oggetto",
-        itemSubtype: "scatola",
+        itemType: "esplosivo",
+        itemSubtype: "mina",
+        charges: 2,
         action: {
-            name: "NASCONDITI",
+            name: "PIAZZA",
             cost: 1,
-            desc: "Se non sei in Linea di Vista di una guardia o una telecamera, sostituisci la tua miniatura con la miniatura della scatola di cartone. Nascosto: Le guardie e le telecamere ti considerano come se fossi una miniatura di una guardia. Sostituisci la scatola di cartone con la tua miniatura se: Salti una guardia; Entri nella Linea di Vista, o attraversi la Linea di Vista, di una guardia o una telecamera; Effettui una qualsiasi azione diversa da Movimento Furtivo, Scatto o Concentrazione. \"Una scatola di cartone?\": Se una guardia termina il suo movimento orientata verso di te e in una casella adiacente alla tua, sostituisci la scatola di cartone con la tua miniatura.",
-            sound: "audio/sfx/oggetto-togliere.wav",
+            desc: "Colloca 1 Claymore da questa carta in una casella adiacente. Quando una qualsiasi miniatura si muove in una casella con una Claymore, infliggi 2 danni a ogni miniatura entro 2 caselle e in Linea di Vista. Se ci sono guardie in quella zona e il tuo segnalino ! non si trova sulla mappa, colloca il tuo segnalino ! nella stessa casella della Claymore. Poi rimuovi dalla mappa la Claymore.",
+            usesCharge: true,
+            sound: "audio/sfx/c4-piazzato.wav",
         },
     },
 
@@ -184,233 +371,17 @@ const EQUIPMENT = {
         },
     },
 
-    "E06B": {
-        name: "NIKITA",
-        type: "weapon",
-        itemType: "arma a distanza",
-        itemSubtype: "lanciarazzi",
-        stageOnly: true,   // ottenibile solo tramite evento, non selezionabile in pre-stage
-        action: {
-            name: "LANCIA",
-            cost: 1,
-            desc: "Se non ce ne sono sulla mappa, colloca 1 missile in una casella adiacente vuota. Poi tira 2 dadi neri e muovi il missile, in una singola direzione, di un numero di caselle pari al risultato di 1 dei dadi. Poi puoi fare lo stesso con l'altro risultato. Se il missile sta per muoversi contro un ostacolo o si trova nella stessa casella di una miniatura, attacca tutte le miniature entro 1 casella e in Linea di Vista. Poi rimuovi il missile. Se si muove fuori dalla mappa, rimuovi il missile. RUMOROSA: Colloca il tuo segnalino ! sotto la tua miniatura.",
-            dice: [{ color: "white", count: 3 }],
-            alertImmediate: true,
-            attack: true,
-            attackType: "ranged",
-            targets: 1,
-            category: "missile",
-        },
-    },
-
-    "030": {
-        name: "MIMETICA OTTICA",
-        type: "item",
-        itemType: "tecnologia",
-        itemSubtype: "mimetica",
-        charges: 2,
-        isGear: true,
-        action: {
-            name: "ATTIVA MIMETIZZAZIONE",
-            cost: 1,
-            usesCharge: true,
-            oncePerTurn: true,
-            desc: "Scarta 1 ingranaggio. Fino alla fine del tuo turno, non collocare il tuo ! quando ti trovi in Linea di Vista di una guardia o di una telecamera. Le guardie non attaccano quando le salti.",
-            sound: "audio/sfx/mimetica.wav",
-        },
-    },
-
-    "031": {
-        name: "SCHEDA D'ACCESSO PAL",
-        type: "special",
-        itemType: "oggetto",
-        itemSubtype: "scheda d'accesso",
-        action: {
-            name: "PASSIVA",
-            cost: 0,
-            desc: "Questa scheda d'accesso può sovrascrivere i codici di detonazione del Metal Gear REX. Ogni volta che tiri i dadi come parte di un'azione Interazione per sbloccare una porta, puoi ripetere il tiro di 1 dado.",
-        },
-    },
-
-    "M01": {
-        name: "PISTOLA (CALIBRO .50)",
-        owner: "Meryl",
-        type: "weapon",
-        itemType: "arma a distanza",
-        itemSubtype: "pistola",
-        action: {
-            name: "SPARA",
-            cost: 1,
-            desc: "Attacca 1 bersaglio in Linea di Vista. RUMOROSA: Colloca il tuo segnalino ! sotto la tua miniatura.",
-            dice: [{ color: "white", count: 1 }],
-            alertImmediate: true,
-            attack: true,
-            attackType: "ranged",
-            targets: 1,
-            category: "pistol",
-            sound: "audio/sfx/socom.wav",
-        },
-    },
-
-    "M02": {
-        name: "FUCILE D'ASSALTO LEGGERO",
-        owner: "Meryl",
-        type: "weapon",
-        itemType: "arma a distanza",
-        itemSubtype: "fucile",
-        charges: 3,
-        action: {
-            name: "SPARA",
-            cost: 1,
-            desc: "Attacca 1 bersaglio in Linea di Vista. RUMOROSA: Colloca il tuo segnalino ! sotto la tua miniatura.",
-            dice: [{ color: "white", count: 2 }],
-            alertImmediate: true,
-            attack: true,
-            attackType: "ranged",
-            targets: 1,
-            usesCharge: true,
-            category: "rifle",
-            sound: "audio/sfx/attacco-guardia.wav",
-        },
-    },
-
-    "022": {
-        name: "SCHEDA D'ACCESSO DI LIVELLO 4",
+    "010": {
+        name: "SCATOLA DI CARTONE A",
         type: "item",
         itemType: "oggetto",
-        itemSubtype: "scheda d'accesso",
-        consumable: true,
+        itemSubtype: "scatola",
         action: {
-            name: "USA",
+            name: "NASCONDITI",
             cost: 1,
-            desc: "Sblocca 1 porta di livello 4 o inferiore nella tua casella. Poi scarta questa carta.",
-            sound: "audio/sfx/porta.wav",
+            desc: "Se non sei in Linea di Vista di una guardia o una telecamera, sostituisci la tua miniatura con la miniatura della scatola di cartone. Nascosto: Le guardie e le telecamere ti considerano come se fossi una miniatura di una guardia. Sostituisci la scatola di cartone con la tua miniatura se: Salti una guardia; Entri nella Linea di Vista, o attraversi la Linea di Vista, di una guardia o una telecamera; Effettui una qualsiasi azione diversa da Movimento Furtivo, Scatto o Concentrazione. \"Una scatola di cartone?\": Se una guardia termina il suo movimento orientata verso di te e in una casella adiacente alla tua, sostituisci la scatola di cartone con la tua miniatura.",
+            sound: "audio/sfx/oggetto-togliere.wav",
         },
-    },
-
-    "013": {
-        name: "SCHEDA D'ACCESSO DI LIVELLO 3",
-        type: "item",
-        itemType: "oggetto",
-        itemSubtype: "scheda d'accesso",
-        consumable: true,
-        action: {
-            name: "USA",
-            cost: 1,
-            desc: "Sblocca 1 porta di livello 3 o inferiore nella tua casella. Poi scarta questa carta.",
-            sound: "audio/sfx/porta.wav",
-        },
-    },
-
-    "GF1": {
-        name: "MIMETICA OTTICA",
-        owner: "Gray Fox",
-        type: "item",
-        itemType: "tecnologia",
-        itemSubtype: "mimetica",
-        charges: 2,
-        isGear: true,
-        action: {
-            name: "ATTIVA MIMETIZZAZIONE",
-            cost: 1,
-            usesCharge: true,
-            oncePerTurn: true,
-            desc: "Scarta 1 ingranaggio. Fino alla fine del tuo turno, non collocare il tuo ! quando ti trovi in Linea di Vista di una guardia o di una telecamera. Le guardie non attaccano quando le salti.",
-            sound: "audio/sfx/mimetica.wav",
-        },
-    },
-
-    "GF2": {
-        name: "SPADA AD ALTA FREQUENZA",
-        owner: "Gray Fox",
-        type: "weapon",
-        itemType: "arma da mischia",
-        itemSubtype: "spada",
-        charges: 3,
-        isGear: true,
-        manualCharge: true,
-        inlineCharge: true,
-        action: {
-            name: "FENDENTE",
-            cost: 1,
-            desc: "Attacca tutte le miniature adiacenti. Puoi scartare 1 Ingranaggio per tirare +1 dado bianco.",
-            dice: [{ color: "white", count: 1 }],
-            attack: true,
-            attackType: "physical",
-            noHitSound: true,
-            targets: "all-adjacent",
-            category: "sword",
-            sound: "audio/azioni/ninja/katana.wav",
-            inlineChargeOnce: true,
-        },
-        passive: {
-            desc: "Quando sei il bersaglio di un attacco,<br>puoi scartare 1 Ingranaggio<br>per applicare -1 a tutti i risultati dei dadi.",
-        },
-    },
-
-    "GF3": {
-        name: "CANNONE DA BRACCIO",
-        owner: "Gray Fox",
-        type: "weapon",
-        itemType: "arma a distanza",
-        itemSubtype: "cannone",
-        charges: 3,
-        isGear: true,
-        inlineCharge: true,
-        action: {
-            name: "SPARA",
-            cost: 1,
-            desc: "Attacca 1 bersaglio in Linea di Vista. Puoi scartare un qualsiasi numero di ingranaggi. Tira +1 dado bianco per ogni ingranaggio scartato. RUMOROSA: Colloca il tuo segnalino ! sotto la tua miniatura.",
-            dice: [{ color: "white", count: 1 }],
-            attack: true,
-            attackType: "ranged",
-            alertImmediate: true,
-            targets: 1,
-            category: "cannon",
-            sound: "audio/sfx/cannone-ninja.wav",
-        },
-    },
-
-    "HE1": {
-        name: "RAZIONI",
-        owner: "Otacon",
-        type: "item",
-        itemType: "oggetto",
-        itemSubtype: "consumabile",
-        consumable: true,
-        action: {
-            name: "CONSUMA",
-            cost: 1,
-            desc: "Scarta fino a 2 danni. Poi scarta questa carta.",
-            sound: "audio/sfx/Razione usata.mp3",
-            heal: 2,
-        },
-    },
-
-    "HE2": {
-        name: "MIMETICA OTTICA AVANZATA",
-        owner: "Otacon",
-        type: "item",
-        itemType: "tecnologia",
-        itemSubtype: "mimetica",
-        charges: 2,
-        actions: [
-            {
-                name: "ATTIVA MIMETIZZAZIONE",
-                cost: 1,
-                usesCharge: true,
-                oncePerTurn: true,
-                desc: "Scarta 1 ingranaggio. Fino alla fine del tuo turno, non collocare il tuo ! quando ti trovi in Linea di Vista di una guardia o di una telecamera. Le guardie non attaccano quando le salti.",
-                sound: "audio/sfx/mimetica.wav",
-            },
-            {
-                name: "RICARICA",
-                cost: 2,
-                desc: "Se non ci sono ingranaggi su questa carta, colloca 1 ingranaggio su di essa.",
-                requiresExhausted: true,
-                grantsCharge: 1,
-            },
-        ],
     },
 
     "011": {
@@ -428,6 +399,52 @@ const EQUIPMENT = {
         },
     },
 
+    "012": {
+        name: "RAZIONI",
+        type: "item",
+        itemType: "oggetto",
+        itemSubtype: "consumabile",
+        consumable: true,
+        action: {
+            name: "CONSUMA",
+            cost: 1,
+            desc: "Scarta fino a 2 danni. Poi scarta questa carta.",
+            sound: "audio/sfx/Razione usata.mp3",
+            heal: 2,
+        },
+    },
+
+    "013": {
+        name: "SCHEDA D'ACCESSO DI LIVELLO 3",
+        type: "item",
+        itemType: "oggetto",
+        itemSubtype: "scheda d'accesso",
+        consumable: true,
+        action: {
+            name: "USA",
+            cost: 1,
+            desc: "Sblocca 1 porta di livello 3 o inferiore nella tua casella. Poi scarta questa carta.",
+            sound: "audio/sfx/porta.wav",
+        },
+    },
+
+    "014": {
+        name: "MASCHERA ANTIGAS",
+        type: "item",
+        itemType: "oggetto",
+        itemSubtype: "indumento",
+        action: {
+            name: "TELEPATIA RESIDUA",
+            cost: 1,
+            desc: "Rivela 1 carta dalla cima del mazzo degli ordini o del mazzo delle reazioni e poi rimettila in cima a quel mazzo.",
+            noise: true,
+            sound: "audio/sfx/maschera-antigas.wav",
+        },
+        passive: {
+            desc: "Ignora i gas velenosi.",
+        },
+    },
+
     "015": {
         name: "RAZIONI",
         type: "item",
@@ -440,6 +457,21 @@ const EQUIPMENT = {
             desc: "Scarta fino a 2 danni. Poi scarta questa carta.",
             sound: "audio/sfx/Razione usata.mp3",
             heal: 2,
+        },
+    },
+
+    "016": {
+        name: "CORDA",
+        type: "item",
+        itemType: "oggetto",
+        itemSubtype: "corda",
+        charges: 5,
+        action: {
+            name: "LEGA",
+            cost: 1,
+            desc: "Colloca 1 corda da questa carta in una guardia KO adiacente. Questa guardia KO ignora gli effetti Risveglio delle Guardie sulle carte ordini delle guardie. Se una guardia si muove su una corda, scarta immediatamente la corda.",
+            usesCharge: true,
+            sound: "audio/sfx/corda.wav",
         },
     },
 
@@ -483,6 +515,22 @@ const EQUIPMENT = {
         },
     },
 
+    "019": {
+        name: "PENTAZEMIN",
+        type: "item",
+        itemType: "oggetto",
+        itemSubtype: "medicina",
+        charges: 2,
+        action: {
+            name: "CONSUMA",
+            cost: 0,
+            desc: "Scarta 1 Dose da questa carta in qualsiasi momento durante il tuo turno. Fino alla fine del tuo turno, ogni volta che tiri i dadi come parte di un'azione, puoi ripetere 1 volta il tiro di un qualsiasi numero di quei dadi.",
+            usesCharge: true,
+            oncePerTurn: true,
+            sound: "audio/sfx/diazepam-medicine.wav",
+        },
+    },
+
     "020": {
         name: "FAZZOLETTO",
         type: "item",
@@ -491,7 +539,7 @@ const EQUIPMENT = {
         owner: "Otacon",
         rewardOnly: true,
         passive: {
-            desc: '"Questo fazzoletto apparteneva a mia madre" — Sniper Wolf. 1 Volta per round, mentre hackeri, puoi modificare di +/−1 il risultato di 1 singolo dado nero.',
+            desc: '"Questo fazzoletto apparteneva a mia madre"<br>— Sniper Wolf. 1 Volta per round, mentre<br>hackeri, puoi modificare di +/−1 il risultato<br>di 1 singolo dado nero.',
         },
     },
 
@@ -507,17 +555,17 @@ const EQUIPMENT = {
         },
     },
 
-    "016": {
-        name: "CORDA",
+    "022": {
+        name: "SCHEDA D'ACCESSO DI LIVELLO 4",
         type: "item",
         itemType: "oggetto",
-        itemSubtype: "corda",
-        charges: 5,
+        itemSubtype: "scheda d'accesso",
+        consumable: true,
         action: {
-            name: "LEGA",
+            name: "USA",
             cost: 1,
-            desc: "Colloca 1 corda da questa carta in una guardia KO adiacente. Questa guardia KO ignora gli effetti Risveglio delle Guardie sulle carte ordini delle guardie. Se una guardia si muove su una corda, scarta immediatamente la corda.",
-            usesCharge: true,
+            desc: "Sblocca 1 porta di livello 4 o inferiore nella tua casella. Poi scarta questa carta.",
+            sound: "audio/sfx/porta.wav",
         },
     },
 
@@ -529,7 +577,158 @@ const EQUIPMENT = {
         owner: "Snake",
         rewardOnly: true,
         passive: {
-            desc: "Quando Snake usa un'arma, non scarta le munizioni.",
+            desc: "Quando Snake usa un'arma, non scarta le<br>munizioni.",
+        },
+    },
+
+    "024": {
+        name: "SILENZIATORE PER PISTOLA",
+        type: "item",
+        itemType: "oggetto",
+        itemSubtype: "accessorio",
+        rewardOnly: true,
+        attachesTo: "pistola",
+        nameSuffix: "CON SILENZIATORE",
+        passive: {
+            desc: "Assegna a una pistola. Ignora RUMOROSA sulla<br>pistola a cui è assegnato il Silenziatore<br>per Pistola.",
+        },
+        actionOverride: {
+            alertImmediate: false,
+            noise: false,
+            sound: "audio/sfx/socom-silenziatore.wav",
+        },
+    },
+
+    "025": {
+        name: "FUCILE D'ASSALTO",
+        type: "weapon",
+        itemType: "arma a distanza",
+        itemSubtype: "fucile",
+        charges: 6,
+        action: {
+            name: "SPARA",
+            cost: 1,
+            desc: "Attacca 1 bersaglio in Linea di Vista. RUMOROSA: Colloca il tuo segnalino ! sotto la tua miniatura.",
+            dice: [{ color: "white", count: 2 }],
+            alertImmediate: true,
+            attack: true,
+            attackType: "ranged",
+            targets: 1,
+            usesCharge: true,
+            category: "rifle",
+            sound: "audio/sfx/attacco-guardia.wav",
+        },
+    },
+
+    "026": {
+        name: "BOMBA A TEMPO",
+        type: "item",
+        itemType: "esplosivo",
+        itemSubtype: "mina",
+        charges: 1,
+        action: {
+            name: "DEPOSITA",
+            cost: 1,
+            desc: "Colloca 1 Bomba da questa carta in una casella adiacente. All'inizio del tuo turno, se c'è una Bomba sulla mappa, infliggi 3 danni a tutte le miniature entro 2 caselle e in Linea di Vista della Bomba. Poi se ci sono guardie nella tua zona e il tuo segnalino ! non si trova già sulla mappa, collocalo sotto la Bomba. Poi rimuovi dalla mappa la Bomba.",
+            usesCharge: true,
+            sound: "audio/sfx/c4-piazzato.wav",
+        },
+    },
+
+    "027": {
+        name: "SCATOLA DI CARTONE B",
+        type: "item",
+        itemType: "oggetto",
+        itemSubtype: "scatola",
+        action: {
+            name: "NASCONDITI",
+            cost: 1,
+            desc: "Se non sei in Linea di Vista di una guardia o una telecamera, sostituisci la tua miniatura con la miniatura della scatola di cartone. Nascosto: Le guardie e le telecamere ti considerano come se fossi una miniatura di una guardia. Sostituisci la scatola di cartone con la tua miniatura se: Salti una guardia; Entri nella Linea di Vista, o attraversi la Linea di Vista, di una guardia o una telecamera; Effettui una qualsiasi azione diversa da Movimento Furtivo, Scatto o Concentrazione. \"Una scatola di cartone?\": Se una guardia termina il suo movimento orientata verso di te e in una casella adiacente alla tua, sostituisci la scatola di cartone con la tua miniatura.",
+            sound: "audio/sfx/oggetto-togliere.wav",
+        },
+    },
+
+    "028": {
+        name: "VISORE NOTTURNO",
+        type: "item",
+        itemType: "oggetto",
+        itemSubtype: "indumento",
+        action: {
+            name: "ESPLORA",
+            cost: 1,
+            desc: "Gira a faccia in su tutti i segnalini Obiettivo o Trappola a faccia in giù entro 5 caselle.",
+            sound: "audio/sfx/oggetto-togliere.wav",
+        },
+        passive: {
+            desc: "Ignora le trappole sensori laser.",
+        },
+    },
+
+    "029": {
+        name: "VISORE TERMICO",
+        type: "item",
+        itemType: "oggetto",
+        itemSubtype: "indumento",
+        action: {
+            name: "SCANSIONA",
+            cost: 2,
+            desc: "Gira a faccia in su 1 segnalino Obiettivo o Sniper Wolf a faccia in giù nella tua zona.",
+            sound: "audio/sfx/oggetto-togliere.wav",
+        },
+        passive: {
+            desc: "Ignora le trappole sensori laser.",
+        },
+    },
+
+    "030": {
+        name: "MIMETICA OTTICA",
+        type: "item",
+        itemType: "tecnologia",
+        itemSubtype: "mimetica",
+        charges: 2,
+        isGear: true,
+        action: {
+            name: "ATTIVA MIMETIZZAZIONE",
+            cost: 1,
+            usesCharge: true,
+            oncePerTurn: true,
+            desc: "Scarta 1 ingranaggio. Fino alla fine del tuo turno, non collocare il tuo ! quando ti trovi in Linea di Vista di una guardia o di una telecamera. Le guardie non attaccano quando le salti.",
+            sound: "audio/sfx/mimetica.wav",
+        },
+    },
+
+    "031": {
+        name: "SCHEDA D'ACCESSO PAL",
+        type: "special",
+        itemType: "oggetto",
+        itemSubtype: "scheda d'accesso",
+        action: {
+            name: "PASSIVA",
+            cost: 0,
+            desc: "Questa scheda d'accesso può sovrascrivere i codici di detonazione del Metal Gear REX. Ogni volta che tiri i dadi come parte di un'azione Interazione per sbloccare una porta, puoi ripetere il tiro di 1 dado.",
+        },
+    },
+
+
+    "032": {
+        name: "SILENZIATORE PER FUCILE",
+        type: "item",
+        itemType: "oggetto",
+        itemSubtype: "accessorio",
+        rewardOnly: true,
+        attachesTo: "fucile",
+        nameSuffix: "CON SILENZIATORE",
+        passive: {
+            desc: "Assegna a un fucile. Ignora RUMOROSA sul<br>fucile a cui è assegnato il Silenziatore<br>per Fucile.",
+        },
+        actionOverride: {
+            alertImmediate: false,
+            noise: false,
+            sound: "audio/sfx/socom-silenziatore.wav",
+            soundByEquip: {
+                "M02": "audio/sfx/fucile-assalto-silenziato.wav",
+                "025": "audio/sfx/fucile-assalto-silenziato.wav",
+            },
         },
     },
 

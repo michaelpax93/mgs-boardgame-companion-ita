@@ -96,6 +96,20 @@
         <div class="vr-breadcrumb-bar" id="vr-breadcrumb-bar"></div>
         <!-- Contenuto VR (lista boss / stage / training) -->
         <div class="vr-menu-content" id="vr-menu-content"></div>
+        <!-- Popup conferma reset stato VR -->
+        <div id="vr-reset-popup" class="save-popup-overlay" style="display:none">
+            <div class="enemy-phase-popup-box">
+                <div class="enemy-phase-popup-text" style="margin-bottom:1rem">AZZERARE TUTTO IL PROGRESSO VR?</div>
+                <div style="display:flex;gap:0.75rem;justify-content:center">
+                    <button class="btn-codec" onclick="App._cancelResetVrState()">
+                        <span class="btn-inner">NO</span>
+                    </button>
+                    <button class="btn-codec btn-video" onclick="App._confirmResetVrState()">
+                        <span class="btn-inner">SÌ</span>
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- STAGE SELECT SCREEN (LOAD GAME) -->
@@ -137,33 +151,6 @@
             </div>
         </div>
 
-        <!-- Players Popup (mostrato quando si avanza al prossimo stage) -->
-        <div id="players-popup" class="players-popup-overlay" style="display:none">
-            <div class="players-popup-box">
-                <div class="players-popup-stage-id" id="players-popup-stage-id">STAGE 02</div>
-                <div class="players-popup-stage-name" id="players-popup-stage-name">ELIPORTO</div>
-                <div class="players-popup-type" id="players-popup-type">SNEAKING MISSION</div>
-                <div class="players-popup-divider"></div>
-                <div class="players-popup-label">OPERATORI MISSIONE</div>
-                <div class="players-popup-list" id="players-popup-list"></div>
-                <button class="btn-codec players-popup-start-btn" onclick="App.startStageFromPopup()">
-                    <span class="btn-inner">▶ INIZIA MISSIONE</span>
-                </button>
-            </div>
-        </div>
-
-        <!-- Equipment Selection Popup -->
-        <div id="equipment-popup" class="equipment-popup-overlay" style="display:none">
-            <div class="equipment-popup-box">
-                <div class="equipment-popup-title">EQUIPAGGIAMENTO</div>
-                <div class="equipment-popup-subtitle">Scegli l'equipaggiamento per questa missione</div>
-                <div id="equipment-popup-notice" class="equipment-popup-notice" style="display:none"></div>
-                <div id="equipment-popup-content" class="equipment-popup-content"></div>
-                <button class="btn-codec equipment-confirm-btn" onclick="App.confirmEquipmentPopup()">
-                    <span class="btn-inner">▶ INIZIA MISSIONE</span>
-                </button>
-            </div>
-        </div>
 
         <!-- Rewards Popup -->
         <div id="rewards-popup" class="rewards-popup-overlay" style="display:none">
@@ -216,6 +203,24 @@
                         <span class="inline-save-cursor">▶</span>
                         <span class="inline-save-label">DO NOT SAVE</span>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Liquid Skull Dice Popup -->
+        <div id="liquid-skull-popup" class="enemy-phase-popup-overlay" style="display:none">
+            <div class="enemy-phase-popup-box">
+                <div class="enemy-phase-popup-text" style="margin-bottom:0.5rem">
+                    <strong>LIQUID SNAKE</strong><br>
+                    <span id="liquid-skull-dice-text"></span>
+                </div>
+                <div style="display:flex;gap:0.75rem;justify-content:center;margin-top:1rem">
+                    <button class="btn-codec" onclick="App._liquidSkullRollResult(false)">
+                        <span class="btn-inner">NO !</span>
+                    </button>
+                    <button class="btn-codec btn-video" onclick="App._liquidSkullRollResult(true)">
+                        <span class="btn-inner">SÌ !</span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -332,10 +337,13 @@
         <!-- VR Intro Typewriter -->
         <div id="vr-intro-overlay" class="vr-intro-overlay" style="display:none">
             <div class="vr-intro-box">
-                <div class="vr-intro-title">◆ OBIETTIVO</div>
+                <div class="vr-intro-mode-badge" id="vr-intro-mode">VR MISSION</div>
+                <div class="vr-intro-stage-name" id="vr-intro-stage-name"></div>
+                <div class="vr-intro-divider"></div>
+                <div class="vr-intro-objective-label">◆ OBIETTIVO</div>
                 <div class="vr-intro-text" id="vr-intro-text"></div>
-                <button class="btn-codec vr-intro-btn" onclick="App.vrIntroConfirm()">
-                    <span class="btn-inner">▶ OK</span>
+                <button class="btn-codec vr-intro-btn" id="vr-intro-confirm-btn" onclick="App.vrIntroConfirm()">
+                    <span class="btn-inner">▶ AVANTI</span>
                 </button>
             </div>
         </div>
@@ -347,6 +355,8 @@
                 <div class="vr-completion-body">
                     PROGRESSO TOTALE: <span id="vr-completion-pct">0%</span>
                 </div>
+                <div id="vr-completion-rewards" class="vr-completion-rewards" style="display:none"></div>
+                <div id="vr-completion-leaderboard" class="vr-completion-leaderboard" style="display:none"></div>
                 <button class="btn-codec vr-intro-btn" onclick="App.vrCompletionClose()">
                     <span class="btn-inner">▶ OK</span>
                 </button>
@@ -397,13 +407,6 @@
             <div class="turn-content" id="turn-content">
                 <!-- Generated by JS -->
             </div>
-        </div>
-
-        <!-- VR Complete Button (visibile solo in vrMode) -->
-        <div id="vr-complete-section" style="display:none;padding:0.75rem 1rem;border-bottom:1px solid var(--border-green)">
-            <button class="btn-codec btn-video" onclick="App.vrCompleteStage()" style="width:100%">
-                <span class="btn-inner">✓ COMPLETA STAGE</span>
-            </button>
         </div>
 
         <!-- Soundboard Section -->
@@ -503,6 +506,21 @@
                 <div id="save-popup-text">SALVATAGGIO IN CORSO...</div>
             </div>
         </div>
+
+        <!-- Delete Block Confirm Popup (dentro card-screen per evitare problemi con overflow) -->
+        <div id="delete-block-popup" class="save-popup-overlay" style="display:none">
+            <div class="enemy-phase-popup-box">
+                <div class="enemy-phase-popup-text" style="margin-bottom:1rem">CANCELLARE IL SALVATAGGIO?</div>
+                <div style="display:flex;gap:0.75rem;justify-content:center">
+                    <button class="btn-codec" onclick="App._cancelDeleteBlock()">
+                        <span class="btn-inner">NO</span>
+                    </button>
+                    <button class="btn-codec btn-video" onclick="App._confirmDeleteBlock()">
+                        <span class="btn-inner">SÌ</span>
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- SCORE SCREEN -->
@@ -583,7 +601,7 @@
                 <div class="option-row option-row-toggle">
                     <div class="option-label">
                         DATI SESSIONE
-                        <div class="option-sublabel">I dati vengono tracciati anche quando disattivati</div>
+                        <div class="option-sublabel">Mostra le statistiche di gioco</div>
                     </div>
                     <label class="option-toggle">
                         <input type="checkbox" id="opt-session-stats"
@@ -615,6 +633,9 @@
     <div id="credits-screen" class="screen">
         <div class="menu-bg">
             <div class="menu-circuit-bg"></div>
+            <button class="btn-codec screen-back-btn-topleft" onclick="App.playSfx(CONFIG.menuSounds['return'].file); App.showSpecialScreen()">
+                <span class="btn-inner">◄ MENU</span>
+            </button>
             <div class="credits-container">
                 <div class="credits-title">MGS BOARD GAME<br><span class="credits-subtitle">COMPANION APP</span></div>
                 <div class="credits-divider"></div>
@@ -632,9 +653,99 @@
                     <div class="credits-name">Tappy Iwase · Harry Gregson-Williams</div>
                 </div>
                 <div class="credits-footer">METAL GEAR SOLID™ © KONAMI</div>
-                <button class="btn-codec option-back-btn" onclick="App.playMenuReturn(); App.showScreen('main-menu')">
-                    <span class="btn-inner">◄ MENU</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- DEMO THEATER SCREEN -->
+    <div id="demo-theater-screen" class="screen">
+        <div class="screen-header">
+            <button class="btn-back" onclick="App.playSfx(CONFIG.menuSounds['return'].file); App.stopDemoTheater(); App.showSpecialScreen()">◄ MENU</button>
+            <div class="header-left">
+                <span class="header-icon">◆</span>
+                <span class="header-title">DEMO THEATER</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:0.75rem;margin-left:auto">
+                <span id="demo-theater-info" style="color:var(--text-green);font-size:0.85rem;white-space:nowrap"></span>
+                <button class="btn-codec" onclick="App.demoTheaterSkip()" onmouseenter="App.playSfx(CONFIG.menuSounds['choice'].file)">
+                    <span class="btn-inner">⏭ SALTA</span>
                 </button>
+            </div>
+        </div>
+        <div class="briefing-video-container">
+            <video id="demo-theater-video"></video>
+        </div>
+    </div>
+
+    <!-- SPECIAL SCREEN -->
+    <div id="special-screen" class="screen">
+        <div class="menu-bg">
+            <div class="menu-circuit-bg"></div>
+            <button class="btn-codec screen-back-btn-topleft" onclick="App.playMenuReturn(); App.goToMainMenu()">
+                <span class="btn-inner">◄ MENU</span>
+            </button>
+            <div class="special-menu-container">
+                <div class="special-menu-title">SPECIAL</div>
+                <div class="special-menu-items">
+                    <button class="btn-codec special-menu-btn"
+                        onmouseenter="App.playSfx(CONFIG.menuSounds['choice'].file)"
+                        onclick="App.playSfx(CONFIG.menuSounds['confirm-save'].file); App.showMemoryBoxScreen()">
+                        <span class="btn-inner">◆ MEMORY BOX</span>
+                    </button>
+                    <button class="btn-codec special-menu-btn"
+                        onmouseenter="App.playSfx(CONFIG.menuSounds['choice'].file)"
+                        onclick="App.playSfx(CONFIG.menuSounds['confirm-save'].file); App.stopMenuMusic(); App.showScreen('credits-screen')">
+                        <span class="btn-inner">◆ CREDITS</span>
+                    </button>
+                    <button id="special-demo-theater-btn" class="btn-codec special-menu-btn" style="display:none"
+                        onmouseenter="App.playSfx(CONFIG.menuSounds['choice'].file)"
+                        onclick="App.playSfx(CONFIG.menuSounds['confirm-save'].file); App.showDemoTheater()">
+                        <span class="btn-inner">◆ DEMO THEATER</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MEMORY BOX SCREEN -->
+    <div id="memory-box-screen" class="screen">
+        <button class="btn-codec screen-back-btn-topleft" onclick="App.playSfx(CONFIG.menuSounds['return'].file); App.showSpecialScreen()">
+            <span class="btn-inner">◄ INDIETRO</span>
+        </button>
+        <div class="memory-box-screen-inner">
+            <div class="memory-box-header">
+                <div class="memory-box-title">MEMORY BOX</div>
+                <div class="memory-box-count-wrap">SBLOCCATI: <span id="memory-box-count">0 / 0</span></div>
+            </div>
+            <div class="memory-box-list-wrap">
+                <div id="memory-box-list" class="memory-box-list"></div>
+            </div>
+        </div>
+
+        <!-- Delete blocked popup (031 con salvataggi avanzati) -->
+        <div id="memory-box-delete-blocked-popup" class="enemy-phase-popup-overlay" style="display:none">
+            <div class="enemy-phase-popup-box">
+                <div class="enemy-phase-popup-text">Non puoi eliminare questo oggetto.<br>Esiste un salvataggio allo stage 05 o successivo.</div>
+                <div style="display:flex; gap:0.5rem; margin-top:1.2rem; justify-content:center">
+                    <button class="btn-codec" onmouseenter="App.playSfx(CONFIG.menuSounds['choice'].file)" onclick="App.playSfx(CONFIG.menuSounds['return'].file); document.getElementById('memory-box-delete-blocked-popup').style.display='none'">
+                        <span class="btn-inner">◄ OK</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Delete confirmation popup -->
+        <div id="memory-box-delete-popup" class="enemy-phase-popup-overlay" style="display:none">
+            <div class="enemy-phase-popup-box">
+                <div class="enemy-phase-popup-text">Rimuovere <strong id="memory-box-delete-name"></strong><br>dalla Memory Box?</div>
+                <div style="display:flex; gap:0.5rem; margin-top:1.2rem; justify-content:center">
+                    <button class="btn-codec" onmouseenter="App.playSfx(CONFIG.menuSounds['choice'].file)" onclick="App.playSfx(CONFIG.menuSounds['return'].file); App._memoryBoxDeleteCancel()">
+                        <span class="btn-inner">✕ ANNULLA</span>
+                    </button>
+                    <button class="btn-codec" onmouseenter="App.playSfx(CONFIG.menuSounds['choice'].file)" onclick="App.playSfx(CONFIG.menuSounds['confirm-save'].file); App._memoryBoxDeleteConfirmed()" autofocus>
+                        <span class="btn-inner">✓ ELIMINA</span>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -675,5 +786,33 @@
     <script src="js/bosses.js"></script>
     <script src="js/app.js"></script>
     <div id="mantis-cursor"></div>
+
+    <!-- Players Popup — globale, visibile da qualsiasi screen -->
+    <div id="players-popup" class="players-popup-overlay" style="display:none">
+        <div class="players-popup-box">
+            <div class="players-popup-stage-id" id="players-popup-stage-id">STAGE 02</div>
+            <div class="players-popup-stage-name" id="players-popup-stage-name">ELIPORTO</div>
+            <div class="players-popup-type" id="players-popup-type">SNEAKING MISSION</div>
+            <div class="players-popup-divider"></div>
+            <div class="players-popup-label">OPERATORI MISSIONE</div>
+            <div class="players-popup-list" id="players-popup-list"></div>
+            <button class="btn-codec players-popup-start-btn" onclick="App.startStageFromPopup()">
+                <span class="btn-inner">▶ INIZIA MISSIONE</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Equipment Selection Popup — globale, visibile da qualsiasi screen -->
+    <div id="equipment-popup" class="equipment-popup-overlay" style="display:none">
+        <div class="equipment-popup-box">
+            <div class="equipment-popup-title">EQUIPAGGIAMENTO</div>
+            <div class="equipment-popup-subtitle">Scegli l'equipaggiamento per questa missione</div>
+            <div id="equipment-popup-notice" class="equipment-popup-notice" style="display:none"></div>
+            <div id="equipment-popup-content" class="equipment-popup-content"></div>
+            <button class="btn-codec equipment-confirm-btn" onclick="App.confirmEquipmentPopup()">
+                <span class="btn-inner">▶ INIZIA MISSIONE</span>
+            </button>
+        </div>
+    </div>
 </body>
 </html>
