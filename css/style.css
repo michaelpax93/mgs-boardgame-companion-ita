@@ -5147,7 +5147,7 @@ body, body * {
     font-family: var(--font-mono);
     text-align: center;
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     justify-content: center;
 }
 

@@ -1905,9 +1905,9 @@ const App = {
 
         const NAMES = {
             EASY:    ['Hound','Pigeon','Piranha','Pig','Cat','Koala','Chicken','Puma','Komodo Dragon','Mongoose','Spider','Flying Squirrel'],
-            NORMAL:  ['Doberman','Falcon','Shark','Elephant','Deer','Capibara','Mouse','Leopard','Iguana','Hyena','Tarantula','Bat'],
+            NORMAL:  ['Doberman','Falcon','Shark','Elephant','Deer','Capybara','Mouse','Leopard','Iguana','Hyena','Tarantula','Bat'],
             HARD:    ['Fox','Hawk','Jaws','Mammoth','Zebra','Sloth','Rabbit','Panther','Alligator','Jackal','Centipede','Flying Fox'],
-            EXTREME: ['Big Boss','Eagle','Orca','Whale','Hippopotamus','Giant Panda','Ostrich','Jaguar','Crocodile','Tasmanian Devil','Scorpion','Night Fox'],
+            EXTREME: ['Big Boss','Eagle','Orca','Whale','Hippopotamus','Giant Panda','Ostrich','Jaguar','Crocodile','Tasmanian Devil','Scorpion','Night Owl'],
         };
         const names = NAMES[diff] || NAMES.NORMAL;
 
@@ -6502,12 +6502,10 @@ const App = {
 
         if (!this._pendingStageId || !this._pendingSelectedPlayers?.length) return;
 
-        const unlocked = this._getAllUnlockedEquip();
-        const players  = this._pendingSelectedPlayers || [];
-        const hasOwnerItems = players.some(p =>
-            Object.values(EQUIPMENT).some(eq => eq.owner && [].concat(eq.owner).includes(p))
-        );
-        if (unlocked.length > 0 || hasOwnerItems) {
+        const unlocked  = this._getAllUnlockedEquip();
+        const players   = this._pendingSelectedPlayers || [];
+        const onlySnake = players.length === 1 && players[0] === 'Snake';
+        if (unlocked.length > 0 || !onlySnake) {
             this._showEquipmentPopup();
         } else {
             this._doStartStage();
@@ -7091,7 +7089,8 @@ const App = {
             const savedFor = this.session?.savedForStage ?? 0;
             if (savedFor >= stageAtGameOver.id) {
                 this.showPlayersPopup(stageAtGameOver);
-            } else if (stageAtGameOver.id === 2 || stageAtGameOver.id === 14) {
+            } else if (stageAtGameOver.id === 1 || stageAtGameOver.id === 2 || stageAtGameOver.id === 14) {
+                // Stage 1: nessun save screen prima del primo stage
                 // Stage 2 e 14: il salvataggio scatta dopo l'intro, non prima dei personaggi
                 this.showPlayersPopup(stageAtGameOver);
             } else {
@@ -7882,7 +7881,14 @@ const App = {
         this.session.difficulty = diff.id;
         this._persistSession();
         this.showBlackTransition(() => {
-            this.selectStage(1);
+            const unlocked = this._getAllUnlockedEquip();
+            if (unlocked.length > 0) {
+                this._pendingStageId = 1;
+                this._pendingSelectedPlayers = ['Snake'];
+                this._showEquipmentPopup();
+            } else {
+                this.selectStage(1);
+            }
         });
     },
 
