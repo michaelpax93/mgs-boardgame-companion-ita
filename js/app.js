@@ -912,7 +912,7 @@ const App = {
         // Libera Snake: se il giocatore attivo ha il ketchup, mostra popup prima di risolvere
         if (ev.liberate === 'snake') {
             const player = this._activePlanciaPlayer() ?? this.stagePlayers?.[0];
-            if (player && this.ketchupState?.[player]) {
+            if (!this._bypassKetchupCheck && player && this.ketchupState?.[player]) {
                 this._ketchupPendingPlayer = player;
                 this._ketchupPendingEvent = id;
                 document.getElementById('ketchup-popup').style.display = 'flex';
@@ -3514,7 +3514,11 @@ const App = {
         const pendingEvent = this._ketchupPendingEvent;
         this._ketchupPendingPlayer = null;
         this._ketchupPendingEvent = null;
-        if (pendingEvent) this.playEvent(pendingEvent);
+        if (pendingEvent) {
+            this._bypassKetchupCheck = true;
+            this.playEvent(pendingEvent);
+            this._bypassKetchupCheck = false;
+        }
     },
 
     toggleSharedConcSelection(playerName) {
