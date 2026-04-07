@@ -537,7 +537,7 @@ mantisShakes: [
             {
                 id: "W",
                 label: "TESSERA WOLF RAGGIUNTA",
-                requiresPlayer: "Otacon",
+                playerOwner: "Otacon",
                 otaconOutro: true,
             },
         ],
