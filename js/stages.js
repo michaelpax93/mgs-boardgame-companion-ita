@@ -465,6 +465,7 @@ mantisShakes: [
         orderCards: { 1: 16, 2: 12 },
         rewards: { always: ["016", "015"] },
         rewardsKetchup: { always: ["016"] },
+        rewardsNoKetchup: { always: ["016"] },
     },
     {
         id: 10,

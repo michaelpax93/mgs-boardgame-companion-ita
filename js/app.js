@@ -170,6 +170,7 @@ const App = {
     eventClickedState: {},    // eventId → true (cliccato una volta)
     _ketchupPendingEvent: null,
     ketchupUsed: false,
+    ketchupPicked: false,
 
     // Stage 11 Sniper Wolf — modalità ibrida Boss/Sneaking con Otacon
     otaconEnemySubPhase: 'select',   // 'select' | 'sniper-wolf' | 'guards'
@@ -751,6 +752,7 @@ const App = {
         this.markerState = {};
         this.ketchupState = {};
         this.ketchupUsed = false;
+        this.ketchupPicked = false;
         this.liberateSnakePlayer = null;
         this._inlineChargeActiveFor = {};
         this._inlineChargeClicksLeft = {};
@@ -1005,6 +1007,7 @@ const App = {
             const player = this._activePlanciaPlayer() ?? this.stagePlayers?.[0];
             if (player) {
                 this.ketchupState[player] = true;
+                this.ketchupPicked = true;
                 this.buildPlayerSidebar(this.currentStage);
             }
         }
@@ -1505,9 +1508,11 @@ const App = {
         if (!this.currentStage) return;
         const nextStage = STAGES.find(s => s.id === this.currentStage.id + 1);
         const destination = nextStage || 'score';
-        const effectiveRewards = (this.ketchupUsed && this.currentStage.rewardsKetchup)
-            ? this.currentStage.rewardsKetchup
-            : this.currentStage.rewards;
+        const effectiveRewards = this.ketchupUsed
+            ? (this.currentStage.rewardsKetchup || this.currentStage.rewards)
+            : (this.ketchupPicked
+                ? this.currentStage.rewards
+                : (this.currentStage.rewardsNoKetchup || this.currentStage.rewards));
         if (destination === 'score') {
             // Applica rewards silenziosamente, nessun popup
             if (effectiveRewards && this.session) {
