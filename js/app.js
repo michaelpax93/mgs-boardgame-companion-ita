@@ -418,6 +418,12 @@ const App = {
 
     goToMainMenu() {
         this.menuLocked = true;
+        this.vrMode = false;
+        // Chiude popup che potrebbero essere rimasti aperti
+        ['equipment-popup', 'players-popup', 'ketchup-popup', 'missile-popup', 'inline-save-question'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+        });
         this.showScreen('main-menu');
 
         // Reset animations
@@ -703,7 +709,11 @@ const App = {
         this.lastMusicId = null;
         this.alertState = 'normal';
         if (this.session) { this.session.stage = stage.id; this._persistSession(); }
-        this.trackStat('rounds'); // round 1 inizia subito
+        if (this._skipFirstRoundStat) {
+            this._skipFirstRoundStat = false;
+        } else {
+            this.trackStat('rounds'); // round 1 inizia subito
+        }
 
         const title = document.getElementById('active-stage-title');
         if (title) title.textContent = `STAGE ${String(stage.id).padStart(2, '0')} — ${stage.name.toUpperCase()}`;
@@ -745,9 +755,10 @@ const App = {
         this.eventClickedState = {};
         this.introPlayed = false;
         this.outroPlayed = false;
-        this.missileState = {}; // playerName → true se il missile è attivo sulla mappa
+        this.missileState = {}; // playerName → { equipId: true } per ogni missile attivo sulla mappa
         this.boxState = {};
         this._missilePendingPlayer = null;
+        this._missilePendingEquipId = null;
         this._eventStoppedMusic = false;
         this.markerState = {};
         this.ketchupState = {};
@@ -1516,10 +1527,8 @@ const App = {
         if (destination === 'score') {
             // Applica rewards silenziosamente, nessun popup
             if (effectiveRewards && this.session) {
-                const pool = this.session.unlockedEquipment || (this.session.unlockedEquipment = []);
+                const pool = this.session.pendingEquipment || (this.session.pendingEquipment = []);
                 (effectiveRewards.always || []).forEach(id => { if (!pool.includes(id)) pool.push(id); });
-                this._persistSession();
-                this._addToMemoryBox(...(this.session?.unlockedEquipment || []));
             }
             this.showScoreScreen();
         } else if (effectiveRewards) {
@@ -1819,12 +1828,12 @@ const App = {
         const visibleItems = popup ? [...popup.querySelectorAll('.rewards-equipment-item.rewards-item-in')] : [];
 
         // Snapshot pool BEFORE saving to know which items were already owned
-        const poolBefore = new Set(this._getMemoryBox());
+        const poolBefore = new Set([...this._getMemoryBox(), ...(this.session?.pendingEquipment || [])]);
 
-        // Persist equipment to session
+        // Accoda rewards al pendingEquipment (confermato solo al salvataggio)
         const stage = this.currentStage;
         if (stage?.rewards && this.session) {
-            const pool = this.session.unlockedEquipment || (this.session.unlockedEquipment = []);
+            const pool = this.session.pendingEquipment || (this.session.pendingEquipment = []);
             (stage.rewards.always || []).forEach(id => { if (!pool.includes(id)) pool.push(id); });
             (stage.rewards.conditional || []).forEach((cond, i) => {
                 const val = this._rewardsConditionalState[i];
@@ -1838,8 +1847,6 @@ const App = {
                     (cond.equipmentIds || []).forEach(id => { if (!pool.includes(id)) pool.push(id); });
                 }
             });
-            this._persistSession();
-            this._addToMemoryBox(...(this.session?.unlockedEquipment || []));
         }
 
         const nextStage = this._rewardsPendingNextStage;
@@ -2496,7 +2503,7 @@ const App = {
         if (zoneIndex >= 0) {
             const activePlayer = this._activePlanciaPlayer()
                 ?? (this.stagePlayers?.length === 1 ? this.stagePlayers[0] : null);
-            if (activePlayer) {
+            if (activePlayer && this.turnPhase !== 'soldiers') {
                 this.playerZoneState[activePlayer] = zoneIndex;
                 // Aggiorna il select nella card senza ricostruire tutto
                 const sel = document.querySelector(`.zone-select[onchange*="${activePlayer}"]`);
@@ -2661,8 +2668,8 @@ const App = {
                 if (p === 'Snake' && (this.playerEquipment[p] || []).includes('023')) {
                     this.session.bandana_used = true;
                 }
-                // Mimetica ottica equipaggiata → segna come usata per lo score
-                if ((this.playerEquipment[p] || []).some(id => EQUIPMENT[id]?.itemSubtype === 'mimetica')) {
+                // Mimetica ottica (030) equipaggiata → segna come usata per lo score
+                if ((this.playerEquipment[p] || []).includes('030')) {
                     this.session.mimetica_used = true;
                 }
             }
@@ -2675,6 +2682,9 @@ const App = {
                 if (sec.id && sec.charges != null) this.bossSectionChargeState[p][sec.id] = sec.charges;
             });
         });
+        // Ricostruisce i bottoni evento ora che stagePlayers è popolato
+        // (buildEventButtons in selectStage girava prima, con stagePlayers non aggiornato)
+        if (this.currentStage) this.buildEventButtons(this.currentStage);
         this._renderTurnSection();
     },
 
@@ -3036,12 +3046,12 @@ const App = {
 
         // Suono azione missile: sequenza sparato→movimento o solo movimento
         if (a.category === 'missile') {
-            const missileAttivo = !!this.missileState[playerName];
+            const missileAttivo = !!(this.missileState[playerName]?.[equipId]);
             const playMovimento = () => {
                 const mov = new Audio('audio/sfx/missile-movimento.wav');
                 mov.volume = App._sfxVol();
-                mov.addEventListener('ended', () => this._showMissilePopup(playerName), { once: true });
-                mov.play().catch(() => this._showMissilePopup(playerName));
+                mov.addEventListener('ended', () => this._showMissilePopup(playerName, equipId), { once: true });
+                mov.play().catch(() => this._showMissilePopup(playerName, equipId));
             };
             if (!missileAttivo) {
                 const sparato = new Audio('audio/sfx/missile-sparato.wav');
@@ -3088,7 +3098,7 @@ const App = {
         // Aggiorna stato consumi
         const consumed = this.equipmentConsumedState[playerName] || {};
         // Per i missili: consuma carica solo al lancio (quando non c'è già un missile attivo)
-        const missileAlreadyActive = a.category === 'missile' && !!this.missileState[playerName];
+        const missileAlreadyActive = a.category === 'missile' && !!(this.missileState[playerName]?.[equipId]);
         if (a.grantsCharge != null && eq.charges != null) {
             const current = typeof consumed[equipId] === 'number' ? consumed[equipId] : 0;
             consumed[equipId] = Math.min(eq.charges, current + a.grantsCharge);
@@ -3178,9 +3188,10 @@ const App = {
         this._refreshEquipmentPanel(playerName);
     },
 
-    _showMissilePopup(playerName) {
+    _showMissilePopup(playerName, equipId) {
         if (this._missilePendingPlayer) return; // popup già aperto, ignora doppio trigger
         this._missilePendingPlayer = playerName;
+        this._missilePendingEquipId = equipId ?? null;
         const text = document.getElementById('missile-popup-text');
         const btns = document.getElementById('missile-popup-buttons');
         if (text) text.innerHTML = 'Il missile incontra<br>un ostacolo?';
@@ -3200,12 +3211,14 @@ const App = {
         if (!player) return;
         if (!hit) {
             document.getElementById('missile-popup').style.display = 'none';
+            if (!this.missileState[player]) this.missileState[player] = {};
+            this.missileState[player][this._missilePendingEquipId] = true;
             this._missilePendingPlayer = null;
-            this.missileState[player] = true;
+            this._missilePendingEquipId = null;
             return;
         }
         // Ostacolo: esplode → alert → chiedi se colpisce qualcuno
-        this.missileState[player] = false;
+        if (this.missileState[player]) delete this.missileState[player][this._missilePendingEquipId];
         const sfx = new Audio('audio/sfx/esplosione.wav');
         sfx.volume = App._sfxVol();
         sfx.play().catch(() => {});
@@ -3239,11 +3252,15 @@ const App = {
     _missileHitEnemy(hit) {
         document.getElementById('missile-popup').style.display = 'none';
         const player = this._missilePendingPlayer;
+        const equipId = this._missilePendingEquipId;
         this._missilePendingPlayer = null;
+        this._missilePendingEquipId = null;
         if (!player) return;
-        if (hit) {
-            const nikitaAction = EQUIPMENT['E06B']?.action;
-            if (nikitaAction) this.showAttackResultPopup(player, 'eq-E06B', nikitaAction);
+        if (this.missileState[player]) delete this.missileState[player][equipId];
+        if (hit && equipId) {
+            const eq = EQUIPMENT[equipId];
+            const action = eq?.action;
+            if (action) this.showAttackResultPopup(player, `eq-${equipId}`, action);
         }
     },
 
@@ -6255,6 +6272,8 @@ const App = {
             const sel = document.querySelector(`.zone-select[onchange*="${playerName}"]`);
             if (sel) sel.value = this.playerZoneState[playerName] ?? 0;
         };
+        // Blocco cambio zona durante la fase nemici
+        if (this.turnPhase === 'soldiers') { revert(); return; }
         // Blocco cambio zona finché un evento specifico non è stato cliccato
         const blockUntil = this.currentStage?.blockZoneChangeUntilEvent;
         if (blockUntil && !this.eventClickedState[blockUntil]) { revert(); return; }
@@ -6523,7 +6542,7 @@ const App = {
 
     _doStartStage() {
         const players = this._pendingSelectedPlayers;
-        const isExtreme = this.session?.difficulty === 'EXTREME';
+        const isExtreme = !this.vrMode && this.session?.difficulty === 'EXTREME';
         const maxSlots  = isExtreme ? 2 : 3;
         if (this.session) this._persistSession();
         const stageId = this._pendingStageId;
@@ -6540,7 +6559,7 @@ const App = {
     _showEquipmentPopup() {
         const players = this._pendingSelectedPlayers;
 
-        const isExtreme = this.session?.difficulty === 'EXTREME';
+        const isExtreme = !this.vrMode && this.session?.difficulty === 'EXTREME';
         const maxSlots  = isExtreme ? 2 : 3;
 
         this.playerEquipment = {};
@@ -6570,7 +6589,7 @@ const App = {
     _renderEquipmentPopup() {
         const players   = this._pendingSelectedPlayers;
         const unlocked  = this._getAllUnlockedEquip();
-        const isExtreme = this.session?.difficulty === 'EXTREME';
+        const isExtreme = !this.vrMode && this.session?.difficulty === 'EXTREME';
         const maxSlots  = isExtreme ? 2 : 3;
         const content   = document.getElementById('equipment-popup-content');
         const n = players.length;
@@ -6747,7 +6766,7 @@ const App = {
 
     _toggleAttachment(playerName, slotIndex, itemId, checked) {
         if (!this.playerAttachments[playerName]) {
-            const maxSlots = this.session?.difficulty === 'EXTREME' ? 2 : 3;
+            const maxSlots = (!this.vrMode && this.session?.difficulty === 'EXTREME') ? 2 : 3;
             this.playerAttachments[playerName] = Array(maxSlots).fill(null);
         }
         this.playerAttachments[playerName][slotIndex] = checked ? itemId : null;
@@ -7308,6 +7327,7 @@ const App = {
             } else if (e.key === 'Escape') {
                 e.preventDefault();
                 this.playMenuReturn();
+                this.goToMainMenu();
             }
             return;
         }
@@ -7352,9 +7372,10 @@ const App = {
                 // noop
             } else if (this.currentScreen === 'stage-select' || this.currentScreen === 'briefing-screen' || this.currentScreen === 'vr-screen') {
                 if (this.currentScreen === 'briefing-screen') this.stopBriefing();
+                document.getElementById('equipment-popup').style.display = 'none';
                 this.stopAllAudio();
                 this.playMenuReturn();
-                this.showScreen('main-menu');
+                this.goToMainMenu();
             }
         }
     },
@@ -7450,7 +7471,10 @@ const App = {
 
     // Restituisce la lista dalla Memory Box globale
     _getAllUnlockedEquip() {
-        return this._getMemoryBox();
+        const box = this._getMemoryBox();
+        const pending = this.session?.pendingEquipment || [];
+        if (!pending.length) return box;
+        return [...new Set([...box, ...pending])];
     },
 
     // VR equipment è letto dinamicamente da _vrState in _getAllUnlockedEquip — nessuna azione necessaria
@@ -7479,7 +7503,9 @@ const App = {
     },
 
     _persistSession() {
-        localStorage.setItem(this.SESSION_KEY, JSON.stringify(this.session));
+        if (!this.session) return;
+        const { pendingEquipment, ...toSave } = this.session;
+        localStorage.setItem(this.SESSION_KEY, JSON.stringify(toSave));
     },
 
     trackStat(stat) {
@@ -7502,6 +7528,15 @@ const App = {
     },
 
     saveToBlock(cardNum, blockId) {
+        // Conferma il pendingEquipment: sposta in unlockedEquipment
+        const pending = this.session.pendingEquipment || [];
+        if (pending.length) {
+            const pool = this.session.unlockedEquipment || (this.session.unlockedEquipment = []);
+            pending.forEach(id => { if (!pool.includes(id)) pool.push(id); });
+            this.session.pendingEquipment = [];
+        }
+        // Aggiorna sempre la Memory Box con tutti gli equipment confermati
+        this._addToMemoryBox(...(this.session.unlockedEquipment || []));
         const card = this._getCard(cardNum);
         this.session.saves++;
         this.session.timestamp = new Date().toISOString();
@@ -8193,6 +8228,8 @@ const App = {
 
     _doLoad(blockId) {
         if (this.loadFromBlock(this.selectedCard, blockId)) {
+            this._skipFirstRoundStat = true;
+            this.vrMode = false;
             this.newGameMode = true;
             this.stopSaveVideo();
             this.stopAllAudio();
@@ -8248,6 +8285,7 @@ const App = {
     },
 
     _goToVrMenu() {
+        this.vrMode = true;
         this.vrNav = { level: 'top', bossId: null };
         this._renderVrScreen();
         this.showScreen('vr-screen');
