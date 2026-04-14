@@ -665,6 +665,7 @@ const App = {
                 this.currentScreen = screenId;
                 window.scrollTo(0, 0);
             }
+            document.body.classList.toggle('body-scrollable', screenId === 'stage-active');
         }, 100);
     },
 
@@ -4690,7 +4691,8 @@ const App = {
                 </div>
             </div>`).join('');
         const cameraHtml = this._buildCameraIndicatorHtml(stage);
-        sidebar.innerHTML = statsHtml + bossHtml + players.map(p => this._buildPlayerCard(p)).join('') + flipCardsHtml + cameraHtml;
+        const diffHtml   = this._buildDifficultyBadgeHtml();
+        sidebar.innerHTML = statsHtml + bossHtml + players.map(p => this._buildPlayerCard(p)).join('') + diffHtml + flipCardsHtml + cameraHtml;
         sidebar.style.display = 'flex';
     },
 
@@ -4708,6 +4710,13 @@ const App = {
                 <div class="session-stat"><span class="stat-label">Rations</span><span class="stat-val">${s.rations_used}</span></div>
             </div>
         </div>`;
+    },
+
+    _buildDifficultyBadgeHtml() {
+        const diffId  = this.session?.difficulty || 'NORMAL';
+        const diff    = this.difficulties.find(d => d.id === diffId) || { label: diffId, caption: '' };
+        const caption = diff.caption.replace(/\n/g, '<br>');
+        return `<div class="sidebar-difficulty">${diff.label}<div class="sidebar-diff-tooltip">${caption}</div></div>`;
     },
 
     toggleSessionStats() {

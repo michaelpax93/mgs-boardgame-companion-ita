@@ -32,6 +32,11 @@
 
 html {
     font-size: 16px;
+    overflow: hidden;
+}
+
+html:has(body.body-scrollable) {
+    overflow-y: auto;
 }
 
 body {
@@ -207,6 +212,55 @@ body {
 
 .player-card:last-child {
     border-bottom: none;
+}
+
+/* ── Difficulty badge nella sidebar ── */
+.sidebar-difficulty {
+    font-family: var(--font-mono);
+    font-size: 0.48rem;
+    letter-spacing: 0.12em;
+    color: rgba(58, 255, 126, 0.55);
+    border: 1px solid rgba(58, 255, 126, 0.2);
+    border-radius: 2px;
+    padding: 0.15rem 0.3rem;
+    text-align: center;
+    cursor: default;
+    position: relative;
+    align-self: center;
+    margin-top: 0.1rem;
+    white-space: nowrap;
+    transition: color 0.12s, border-color 0.12s;
+}
+
+.sidebar-difficulty:hover {
+    color: rgba(58, 255, 126, 0.9);
+    border-color: rgba(58, 255, 126, 0.5);
+}
+
+.sidebar-diff-tooltip {
+    position: absolute;
+    left: calc(100% + 8px);
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(0, 0, 0, 0.92);
+    border: 1px solid rgba(58, 255, 126, 0.35);
+    border-radius: 3px;
+    padding: 0.45rem 0.6rem;
+    font-family: var(--font-mono);
+    font-size: 0.52rem;
+    color: rgba(58, 255, 126, 0.85);
+    line-height: 1.8;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 200;
+    min-width: 160px;
+    white-space: nowrap;
+    text-align: left;
+}
+
+.sidebar-difficulty:hover .sidebar-diff-tooltip {
+    opacity: 1;
 }
 
 .player-boss-sections {
@@ -952,6 +1006,11 @@ body {
 /* ============================================
    STAGE SELECT GRID
    ============================================ */
+#stage-select.active {
+    height: 100vh;
+    overflow-y: auto;
+}
+
 .stage-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
@@ -1678,14 +1737,10 @@ body, body * {
    MAIN MENU (PS1 STYLE)
    ============================================ */
 #main-menu {
-    padding: 0;
-    max-width: none;
-}
-
-#main-menu {
     max-width: none;
     padding: 0;
     margin: 0;
+    overflow: hidden;
 }
 
 .menu-bg {
@@ -2026,6 +2081,15 @@ body, body * {
     max-width: none;
     padding: 0;
     margin: 0;
+    overflow: hidden;
+}
+
+#difficulty-screen .screen-header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 20;
 }
 
 /* Background circuiti verde per la schermata difficoltà */
@@ -4272,9 +4336,9 @@ body, body * {
 #card-screen.active {
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
-    position: relative;
+    height: 100vh;
     overflow-y: auto;
+    position: relative;
 }
 
 /* ============================================================
@@ -5268,6 +5332,11 @@ body, body * {
 /* ============================================
    OPTION / CREDITS — sfondo più verde, nessuna musica
    ============================================ */
+#option-screen,
+#credits-screen {
+    overflow: hidden;
+}
+
 #option-screen .menu-bg::before,
 #credits-screen .menu-bg::before {
     background: radial-gradient(ellipse at 50% 40%, rgba(20, 80, 40, 0.55) 0%, rgba(0, 0, 0, 0) 70%);
@@ -5807,7 +5876,8 @@ body, body * {
 #vr-screen.active {
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
+    height: 100vh;
+    overflow-y: auto;
     position: relative;
 }
 
